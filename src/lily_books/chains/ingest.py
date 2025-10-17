@@ -69,3 +69,4 @@ def chapterize(text: str) -> List[ChapterSplit]:
 # LCEL Runnables
 IngestChain = RunnableLambda(lambda x: load_gutendex(x["book_id"]))
 ChapterizeChain = RunnableLambda(lambda x: chapterize(x["raw_text"]))
+

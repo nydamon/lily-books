@@ -89,3 +89,4 @@ class FlowState(TypedDict):
     qa_text_ok: bool | None
     audio_ok: bool | None
     errors: list[str]
+

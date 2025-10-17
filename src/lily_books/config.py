@@ -55,3 +55,4 @@ def ensure_directories(slug: str) -> None:
 
 # Global settings instance
 settings = Settings()
+
