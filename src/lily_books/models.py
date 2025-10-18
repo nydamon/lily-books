@@ -84,6 +84,7 @@ class FlowState(TypedDict):
     slug: str
     book_id: int | None
     paths: dict
+    raw_text: str | None
     chapters: list[ChapterSplit] | None
     rewritten: list[str] | None
     qa_text_ok: bool | None

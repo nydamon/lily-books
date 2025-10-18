@@ -11,7 +11,7 @@ cli = typer.Typer()
 @cli.command()
 def run(
     book_id: int = typer.Argument(..., help="Gutendex book ID"),
-    slug: str = typer.Option(..., "--slug", "-s", help="Project slug identifier"),
+    slug: str = typer.Argument(..., help="Project slug identifier"),
     chapters: Optional[str] = typer.Option(None, "--chapters", "-c", help="Comma-separated chapter numbers")
 ):
     """Run the complete book modernization pipeline."""
@@ -39,7 +39,11 @@ def status(slug: str = typer.Argument(..., help="Project slug identifier")):
     """Get pipeline status and progress."""
     status_info = get_pipeline_status(slug)
     
-    if status_info["status"] == "not_found":
+    if not status_info:
+        typer.echo(f"❌ Project {slug} not found")
+        return
+    
+    if status_info.get("status") == "not_found":
         typer.echo(f"❌ Project {slug} not found")
         return
     
@@ -53,9 +57,9 @@ def status(slug: str = typer.Argument(..., help="Project slug identifier")):
 
 @cli.command()
 def api(
-    host: str = typer.Option("0.0.0.0", "--host", "-h", help="Host to bind to"),
-    port: int = typer.Option(8000, "--port", "-p", help="Port to bind to"),
-    reload: bool = typer.Option(False, "--reload", "-r", help="Enable auto-reload")
+    host: str = typer.Option("0.0.0.0", "--host", help="Host to bind to"),
+    port: int = typer.Option(8000, "--port", help="Port to bind to"),
+    reload: bool = typer.Option(False, "--reload", help="Enable auto-reload")
 ):
     """Start the FastAPI server."""
     import uvicorn

@@ -32,6 +32,7 @@ def run_pipeline(slug: str, book_id: int, chapters: Optional[list[int]] = None) 
             "slug": slug,
             "book_id": book_id,
             "paths": {},
+            "raw_text": None,
             "chapters": None,
             "rewritten": None,
             "qa_text_ok": None,
@@ -52,7 +53,8 @@ def run_pipeline(slug: str, book_id: int, chapters: Optional[list[int]] = None) 
         
         # Compile and run graph
         graph = compile_graph()
-        result = graph.invoke(initial_state)
+        config = {"configurable": {"thread_id": slug}}
+        result = graph.invoke(initial_state, config=config)
         
         # Calculate runtime
         runtime_sec = time.time() - start_time
