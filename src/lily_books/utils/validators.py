@@ -47,13 +47,48 @@ def safe_parse_checker_output(output: Any) -> Optional[CheckerOutput]:
         if isinstance(output, CheckerOutput):
             return output
         elif isinstance(output, dict):
-            return CheckerOutput(**output)
+            # Clean up malformed issues before parsing
+            cleaned_output = clean_checker_output(output)
+            return CheckerOutput(**cleaned_output)
         else:
             logger.warning(f"Unexpected CheckerOutput type: {type(output)}")
             return None
     except (ValidationError, TypeError, ValueError) as e:
         logger.error(f"Failed to parse CheckerOutput: {e}")
         return None
+
+
+def clean_checker_output(output: dict) -> dict:
+    """
+    Clean malformed CheckerOutput data before parsing.
+    
+    Args:
+        output: Raw output dictionary
+    
+    Returns:
+        Cleaned output dictionary
+    """
+    cleaned = output.copy()
+    
+    # Clean up issues list
+    if 'issues' in cleaned and isinstance(cleaned['issues'], list):
+        cleaned_issues = []
+        for issue in cleaned['issues']:
+            if isinstance(issue, dict):
+                # Skip issues with empty type or missing description
+                if (issue.get('type') and 
+                    issue.get('description') and 
+                    len(issue.get('type', '').strip()) > 0 and
+                    len(issue.get('description', '').strip()) > 0):
+                    cleaned_issues.append(issue)
+                else:
+                    logger.warning(f"Skipping malformed issue: {issue}")
+            else:
+                logger.warning(f"Skipping non-dict issue: {issue}")
+        
+        cleaned['issues'] = cleaned_issues
+    
+    return cleaned
 
 
 def sanity_check_writer_output(output: WriterOutput) -> List[str]:

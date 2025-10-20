@@ -211,28 +211,145 @@ def build_epub(
             book.add_item(cover_image)
             # Don't use set_cover() as it creates duplicate files
     
-    # Create CSS first
+    # Create comprehensive CSS styling
     style = """
     body {
-        font-family: Georgia, serif;
+        font-family: Georgia, "Times New Roman", serif;
         line-height: 1.6;
         margin: 2em;
         background-color: #fefefe;
         color: #333;
+        font-size: 1.1em;
     }
+    
     h1 {
         color: #2c3e50;
         border-bottom: 2px solid #3498db;
         padding-bottom: 0.5em;
         margin-bottom: 1em;
+        font-size: 1.8em;
+        font-weight: bold;
+        text-align: center;
     }
+    
+    h2 {
+        color: #34495e;
+        margin-top: 2em;
+        margin-bottom: 1em;
+        font-size: 1.4em;
+        font-weight: bold;
+    }
+    
+    h3 {
+        color: #34495e;
+        margin-top: 1.5em;
+        margin-bottom: 0.8em;
+        font-size: 1.2em;
+        font-weight: bold;
+    }
+    
     p {
         margin-bottom: 1em;
         text-align: justify;
+        text-indent: 1.5em;
     }
+    
+    /* Don't indent first paragraph after headings */
+    h1 + p, h2 + p, h3 + p {
+        text-indent: 0;
+    }
+    
     em {
         font-style: italic;
         color: #7f8c8d;
+        font-weight: normal;
+    }
+    
+    strong {
+        font-weight: bold;
+        color: #2c3e50;
+    }
+    
+    blockquote {
+        margin: 1.5em 2em;
+        padding: 1em;
+        background-color: #f8f9fa;
+        border-left: 4px solid #3498db;
+        font-style: italic;
+        text-indent: 0;
+    }
+    
+    /* Dialogue styling */
+    p:has(> em:first-child) {
+        text-indent: 0;
+        margin-left: 2em;
+    }
+    
+    /* Chapter titles */
+    .chapter-title {
+        text-align: center;
+        font-size: 1.6em;
+        margin: 2em 0 1em 0;
+        color: #2c3e50;
+        font-weight: bold;
+    }
+    
+    /* Copyright and about pages */
+    .copyright-page {
+        text-align: center;
+        margin: 3em 0;
+    }
+    
+    .copyright-page h1 {
+        border: none;
+        margin-bottom: 2em;
+    }
+    
+    .copyright-page p {
+        text-align: center;
+        text-indent: 0;
+        margin: 1em 0;
+    }
+    
+    /* Back matter */
+    .back-matter {
+        margin-top: 3em;
+    }
+    
+    .back-matter h3 {
+        color: #3498db;
+        border-bottom: 1px solid #bdc3c7;
+        padding-bottom: 0.3em;
+    }
+    
+    .back-matter ul {
+        margin: 1em 0;
+        padding-left: 2em;
+    }
+    
+    .back-matter li {
+        margin: 0.5em 0;
+        text-indent: 0;
+    }
+    
+    /* Responsive design */
+    @media (max-width: 600px) {
+        body {
+            margin: 1em;
+            font-size: 1em;
+        }
+        
+        h1 {
+            font-size: 1.5em;
+        }
+        
+        h2 {
+            font-size: 1.3em;
+        }
+        
+        blockquote {
+            margin: 1em 1em;
+        }
     }
     """
     nav_css = epub.EpubItem(
@@ -248,8 +365,9 @@ def build_epub(
     <html>
     <head>
         <title>{metadata.title}</title>
+        <link href="style/nav.css" rel="stylesheet" type="text/css"/>
     </head>
-    <body>
+    <body class="copyright-page">
         <h1>{metadata.title}</h1>
         <h2>by {metadata.author}</h2>
         <p><em>Modernized Student Edition</em></p>
@@ -312,9 +430,10 @@ def build_epub(
         <html>
         <head>
             <title>{chapter_doc.title}</title>
+            <link href="style/nav.css" rel="stylesheet" type="text/css"/>
         </head>
         <body>
-            <h1>{chapter_doc.title}</h1>
+            <h1 class="chapter-title">{chapter_doc.title}</h1>
         """
         
         # Add each paragraph

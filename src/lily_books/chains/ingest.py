@@ -13,6 +13,46 @@ from ..config import settings
 logger = logging.getLogger(__name__)
 
 
+def clean_illustration_placeholders(text: str) -> str:
+    """
+    Clean illustration placeholders from text.
+    
+    Args:
+        text: Raw text content
+    
+    Returns:
+        Cleaned text with illustration placeholders removed
+    """
+    # Remove various illustration placeholder patterns
+    patterns = [
+        r'\[Illustration[^\]]*\]',  # [Illustration], [Illustration: description], etc.
+        r'\[ILLUSTRATION[^\]]*\]',  # Uppercase variants
+        r'\[Fig\.\s*\d+[^\]]*\]',   # Figure references
+        r'\[Plate\s*\d+[^\]]*\]',   # Plate references
+        r'\[Image[^\]]*\]',         # Generic image references
+    ]
+    
+    cleaned_text = text
+    removed_count = 0
+    
+    for pattern in patterns:
+        matches = re.findall(pattern, cleaned_text, re.IGNORECASE)
+        if matches:
+            removed_count += len(matches)
+            cleaned_text = re.sub(pattern, '', cleaned_text, flags=re.IGNORECASE)
+    
+    if removed_count > 0:
+        logger.info(f"Removed {removed_count} illustration placeholders")
+        
+        # Clean up multiple blank lines
+        cleaned_text = re.sub(r'\n{3,}', '\n\n', cleaned_text)
+        
+        # Clean up leading/trailing whitespace
+        cleaned_text = cleaned_text.strip()
+    
+    return cleaned_text
+
+
 def load_gutendex(book_id: int) -> str:
     """Load raw text from Gutendex API with basic sanity checks."""
     try:
@@ -47,6 +87,9 @@ def load_gutendex(book_id: int) -> str:
         # Check for basic text quality
         if not any(char.isalpha() for char in text[:1000]):
             logger.warning(f"Text content appears to lack alphabetic characters for book {book_id}")
+        
+        # Clean illustration placeholders
+        text = clean_illustration_placeholders(text)
         
         logger.info(f"Loaded text for book {book_id}: {len(text)} chars")
         return text
