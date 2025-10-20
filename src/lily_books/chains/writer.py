@@ -695,3 +695,4 @@ def rewrite_chapter(ch: ChapterSplit, slug: str = None) -> ChapterDoc:
             batch_indices = []
     
     return ChapterDoc(chapter=ch.chapter, title=ch.title, pairs=pairs)
+
