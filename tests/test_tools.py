@@ -4,11 +4,14 @@ import pytest
 import tempfile
 from pathlib import Path
 from unittest.mock import patch, MagicMock
-from src.lily_books.tools.epub import escape_html, build_epub
-from src.lily_books.tools.tts import chunk_text, tts_elevenlabs
-from src.lily_books.tools.audio import master_audio, get_audio_metrics, extract_retail_sample
-from src.lily_books.models import ChapterDoc, BookMetadata
-from tests.fixtures.sample_chapter import get_sample_chapter_doc
+from lily_books.tools.epub import escape_html, build_epub
+from lily_books.tools.tts import chunk_text, tts_elevenlabs
+from lily_books.tools.audio import master_audio, get_audio_metrics, extract_retail_sample
+from lily_books.models import ChapterDoc, BookMetadata
+import sys
+from pathlib import Path
+sys.path.append(str(Path(__file__).parent))
+from fixtures.sample_chapter import get_sample_chapter_doc
 
 
 def test_escape_html():

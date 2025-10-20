@@ -3,12 +3,15 @@
 import json
 import subprocess
 import tempfile
+import logging
 from pathlib import Path
 from typing import Dict, List
 from langchain_core.tools import tool
 import requests
 
 from ..config import settings
+
+logger = logging.getLogger(__name__)
 
 
 def chunk_text(text: str, max_chars: int = 200000) -> List[str]:
@@ -36,6 +39,20 @@ def chunk_text(text: str, max_chars: int = 200000) -> List[str]:
 
 def tts_elevenlabs(text: str, voice_id: str, out_wav: Path) -> Dict:
     """Synthesize text with ElevenLabs and convert to 44.1k mono WAV."""
+    # Basic sanity checks
+    if not text or len(text.strip()) < 10:
+        logger.warning(f"Text too short for TTS: {len(text)} chars")
+        return {"success": False, "error": "Text too short for TTS"}
+    
+    if len(text) > 1_000_000:  # 1MB limit
+        logger.warning(f"Text too long for TTS: {len(text)} chars")
+        return {"success": False, "error": "Text too long for TTS"}
+    
+    # Check for problematic characters
+    if not any(char.isalpha() for char in text[:100]):
+        logger.warning("Text appears to lack alphabetic characters")
+        return {"success": False, "error": "Text lacks readable content"}
+    
     chunks = chunk_text(text)
     temp_files = []
     
@@ -61,7 +78,7 @@ def tts_elevenlabs(text: str, voice_id: str, out_wav: Path) -> Dict:
                         "similarity_boost": 0.75
                     }
                 },
-                timeout=300
+                timeout=60
             )
             response.raise_for_status()
             

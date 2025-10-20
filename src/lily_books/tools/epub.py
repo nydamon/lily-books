@@ -2,13 +2,32 @@
 
 import html
 import re
+import logging
 from pathlib import Path
 from typing import List
 from ebooklib import epub
 from langchain_core.tools import tool
 
-from ..models import ChapterDoc, BookMetadata
+from ..models import ChapterDoc, BookMetadata, ParaPair
 from ..config import get_project_paths
+
+logger = logging.getLogger(__name__)
+
+
+def filter_empty_paragraphs(pairs: List[ParaPair]) -> List[ParaPair]:
+    """Filter out empty or invalid paragraphs."""
+    valid_pairs = []
+    for pair in pairs:
+        if pair.modern and pair.modern.strip():
+            # Check for meaningful content (not just whitespace or placeholders)
+            if len(pair.modern.strip()) > 10 and not pair.modern.strip().startswith('['):
+                valid_pairs.append(pair)
+            else:
+                logger.warning(f"Skipping paragraph {pair.i}: content too short or placeholder")
+        else:
+            logger.warning(f"Skipping paragraph {pair.i}: empty content")
+    
+    return valid_pairs
 
 
 def escape_html(text: str) -> str:
@@ -25,6 +44,8 @@ def escape_html(text: str) -> str:
 
 def build_epub(slug: str, chapters: List[ChapterDoc], metadata: BookMetadata) -> Path:
     """Build EPUB3 file from modernized chapters."""
+    from ..config import ensure_directories
+    ensure_directories(slug)
     paths = get_project_paths(slug)
     
     # Create EPUB book
@@ -35,6 +56,38 @@ def build_epub(slug: str, chapters: List[ChapterDoc], metadata: BookMetadata) ->
     book.set_title(metadata.title)
     book.set_language(metadata.language)
     book.add_author(metadata.author)
+    
+    # Create CSS first
+    style = """
+    body {
+        font-family: Georgia, serif;
+        line-height: 1.6;
+        margin: 2em;
+        background-color: #fefefe;
+        color: #333;
+    }
+    h1 {
+        color: #2c3e50;
+        border-bottom: 2px solid #3498db;
+        padding-bottom: 0.5em;
+        margin-bottom: 1em;
+    }
+    p {
+        margin-bottom: 1em;
+        text-align: justify;
+    }
+    em {
+        font-style: italic;
+        color: #7f8c8d;
+    }
+    """
+    nav_css = epub.EpubItem(
+        uid="nav_css",
+        file_name="style/nav.css",
+        media_type="text/css",
+        content=style
+    )
+    book.add_item(nav_css)
     
     # Add cover page
     cover_html = f"""
@@ -65,6 +118,13 @@ def build_epub(slug: str, chapters: List[ChapterDoc], metadata: BookMetadata) ->
     # Process each chapter
     for chapter_doc in chapters:
         if not chapter_doc.pairs:
+            logger.warning(f"Skipping empty chapter: {chapter_doc.title}")
+            continue
+        
+        # Filter out empty paragraphs
+        valid_pairs = filter_empty_paragraphs(chapter_doc.pairs)
+        if not valid_pairs:
+            logger.warning(f"Skipping chapter with no valid paragraphs: {chapter_doc.title}")
             continue
             
         # Create chapter HTML
@@ -78,7 +138,7 @@ def build_epub(slug: str, chapters: List[ChapterDoc], metadata: BookMetadata) ->
         """
         
         # Add each paragraph
-        for pair in chapter_doc.pairs:
+        for pair in valid_pairs:
             modern_text = escape_html(pair.modern)
             chapter_html += f"<p>{modern_text}</p>\n"
         
@@ -91,6 +151,7 @@ def build_epub(slug: str, chapters: List[ChapterDoc], metadata: BookMetadata) ->
             lang=metadata.language
         )
         chapter_file.content = chapter_html
+        chapter_file.add_item(nav_css)  # Link CSS to chapter
         
         # Add to book
         book.add_item(chapter_file)
@@ -108,30 +169,6 @@ def build_epub(slug: str, chapters: List[ChapterDoc], metadata: BookMetadata) ->
     # Add navigation
     book.add_item(epub.EpubNcx())
     book.add_item(epub.EpubNav())
-    
-    # Add CSS
-    style = """
-    body {
-        font-family: Georgia, serif;
-        line-height: 1.6;
-        margin: 2em;
-    }
-    h1 {
-        color: #333;
-        border-bottom: 2px solid #333;
-        padding-bottom: 0.5em;
-    }
-    em {
-        font-style: italic;
-    }
-    """
-    nav_css = epub.EpubItem(
-        uid="nav_css",
-        file_name="style/nav.css",
-        media_type="text/css",
-        content=style
-    )
-    book.add_item(nav_css)
     
     # Write EPUB file
     output_path = paths["deliverables_ebook"] / f"{slug}.epub"

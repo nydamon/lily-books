@@ -1,6 +1,6 @@
 """Sample chapter data for testing."""
 
-from src.lily_books.models import ChapterSplit, ChapterDoc, ParaPair, QAReport
+from lily_books.models import ChapterSplit, ChapterDoc, ParaPair, QAReport
 
 
 def get_sample_chapter_split() -> ChapterSplit:

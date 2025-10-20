@@ -227,3 +227,68 @@ def load_raw_text(slug: str) -> Optional[str]:
         print(f"Error loading raw text: {e}")
         return None
 
+
+def save_chapter_failure(slug: str, chapter_num: int, stage: str, error: str) -> Path:
+    """Save chapter failure to manifest."""
+    paths = get_project_paths(slug)
+    ensure_directories(slug)
+    
+    failure_entry = {
+        "timestamp": datetime.utcnow().isoformat(),
+        "chapter": chapter_num,
+        "stage": stage,
+        "error": error
+    }
+    
+    failure_file = paths["meta"] / "chapter_failures.jsonl"
+    with open(failure_file, 'a', encoding='utf-8') as f:
+        f.write(json.dumps(failure_entry, ensure_ascii=False) + '\n')
+    
+    return failure_file
+
+
+def load_chapter_failures(slug: str) -> List[Dict]:
+    """Load chapter failures from manifest."""
+    paths = get_project_paths(slug)
+    failure_file = paths["meta"] / "chapter_failures.jsonl"
+    
+    if not failure_file.exists():
+        return []
+    
+    failures = []
+    try:
+        with open(failure_file, 'r', encoding='utf-8') as f:
+            for line in f:
+                if line.strip():
+                    failures.append(json.loads(line))
+    except Exception as e:
+        print(f"Error loading chapter failures: {e}")
+    
+    return failures
+
+
+def clear_chapter_failure(slug: str, chapter_num: int) -> None:
+    """Remove chapter from failures manifest."""
+    paths = get_project_paths(slug)
+    failure_file = paths["meta"] / "chapter_failures.jsonl"
+    
+    if not failure_file.exists():
+        return
+    
+    # Load all failures, filter out the specified chapter
+    failures = []
+    try:
+        with open(failure_file, 'r', encoding='utf-8') as f:
+            for line in f:
+                if line.strip():
+                    failure = json.loads(line)
+                    if failure["chapter"] != chapter_num:
+                        failures.append(failure)
+        
+        # Write back filtered failures
+        with open(failure_file, 'w', encoding='utf-8') as f:
+            for failure in failures:
+                f.write(json.dumps(failure, ensure_ascii=False) + '\n')
+    except Exception as e:
+        print(f"Error clearing chapter failure: {e}")
+
