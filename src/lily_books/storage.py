@@ -6,7 +6,7 @@ from pathlib import Path
 from typing import Dict, List, Optional, Any
 from dataclasses import dataclass
 
-from .models import ChapterDoc, FlowState, BookMetadata
+from .models import ChapterDoc, FlowState, BookMetadata, PublishingMetadata, CoverDesign
 from .config import get_project_paths, ensure_directories
 
 
@@ -291,4 +291,29 @@ def clear_chapter_failure(slug: str, chapter_num: int) -> None:
                 f.write(json.dumps(failure, ensure_ascii=False) + '\n')
     except Exception as e:
         print(f"Error clearing chapter failure: {e}")
+
+
+def save_publishing_metadata(slug: str, metadata: PublishingMetadata) -> Path:
+    """Save publishing metadata to YAML."""
+    paths = get_project_paths(slug)
+    ensure_directories(slug)
+    file_path = paths["meta"] / "publishing.yaml"
+    
+    import yaml
+    with open(file_path, 'w', encoding='utf-8') as f:
+        yaml.dump(metadata.model_dump(), f, default_flow_style=False, allow_unicode=True)
+    
+    return file_path
+
+
+def save_cover_design(slug: str, cover: CoverDesign) -> Path:
+    """Save cover design metadata."""
+    paths = get_project_paths(slug)
+    ensure_directories(slug)
+    file_path = paths["meta"] / "cover.json"
+    
+    with open(file_path, 'w', encoding='utf-8') as f:
+        json.dump(cover.model_dump(), f, indent=2, ensure_ascii=False)
+    
+    return file_path
 

@@ -2,6 +2,7 @@
 
 import asyncio
 import logging
+from pathlib import Path
 from typing import Dict, Any, List, Callable, Optional
 
 logger = logging.getLogger(__name__)
@@ -16,10 +17,12 @@ from .models import (
 from .chains.ingest import IngestChain, ChapterizeChain
 from .chains.writer import rewrite_chapter, rewrite_chapter_async
 from .chains.checker import qa_chapter, qa_chapter_async
+from .chains.metadata_generator import generate_metadata
 from .tools.epub import build_epub
 from .tools.epub_validator import validate_epub_structure
 from .tools.tts import tts_elevenlabs
 from .tools.audio import master_audio, get_audio_metrics, extract_retail_sample
+from .tools.cover_generator import generate_cover
 from .storage import (
     save_raw_text, save_chapters_jsonl, save_chapter_doc, save_qa_issues,
     save_state, append_log_entry, save_book_metadata, get_project_paths,
@@ -635,6 +638,99 @@ def remediate_node(state: FlowState) -> FlowState:
         )
 
 
+def metadata_node(state: FlowState) -> FlowState:
+    """Generate publishing metadata using LLM."""
+    append_log_entry(state["slug"], {
+        "node": "metadata",
+        "status": "started"
+    })
+    
+    try:
+        # Extract original info from ingest
+        book_meta = BookMetadata(
+            title=f"{state['slug'].title()}",
+            author="Unknown",  # Will be filled by metadata generator
+            public_domain_source=f"Project Gutenberg #{state['book_id']}"
+        )
+        
+        # Generate extended metadata
+        pub_metadata = generate_metadata(
+            original_title=state['slug'].replace('-', ' ').title(),
+            original_author=book_meta.author,
+            source=book_meta.public_domain_source,
+            publisher="Modernized Classics Press",
+            chapters=state["rewritten"],
+            slug=state["slug"]
+        )
+        
+        append_log_entry(state["slug"], {
+            "node": "metadata",
+            "status": "completed",
+            "keywords": pub_metadata.keywords,
+            "categories": pub_metadata.categories
+        })
+        
+        return {**state, "publishing_metadata": pub_metadata}
+        
+    except Exception as e:
+        append_log_entry(state["slug"], {
+            "node": "metadata",
+            "status": "error",
+            "error": str(e)
+        })
+        # Non-critical: continue without extended metadata
+        logger.warning(f"Metadata generation failed, continuing: {e}")
+        return state
+
+
+def cover_node(state: FlowState) -> FlowState:
+    """Generate book cover (AI or template)."""
+    append_log_entry(state["slug"], {
+        "node": "cover",
+        "status": "started"
+    })
+    
+    try:
+        from .config import get_config
+        config = get_config()
+        pub_metadata = state.get("publishing_metadata")
+        
+        if not pub_metadata:
+            logger.warning("No publishing metadata, skipping cover")
+            return state
+        
+        # Generate cover (AI or template based on config)
+        use_ai = getattr(config, 'use_ai_covers', False)
+        cover_design = generate_cover(
+            metadata=pub_metadata,
+            slug=state["slug"],
+            use_ai=use_ai
+        )
+        
+        append_log_entry(state["slug"], {
+            "node": "cover",
+            "status": "completed",
+            "cover_path": cover_design.image_path,
+            "method": "AI" if use_ai else "template"
+        })
+        
+        return {
+            **state,
+            "cover_design": cover_design,
+            "cover_path": cover_design.image_path
+        }
+        
+    except Exception as e:
+        append_log_entry(state["slug"], {
+            "node": "cover",
+            "status": "error",
+            "error": str(e)
+        })
+        # Non-critical: continue without cover
+        logger.warning(f"Cover generation failed, continuing: {e}")
+        return state
+
+
 def epub_node(state: FlowState) -> FlowState:
     """Build EPUB from modernized chapters."""
     append_log_entry(state["slug"], {
@@ -650,8 +746,18 @@ def epub_node(state: FlowState) -> FlowState:
             public_domain_source=f"Project Gutenberg #{state['book_id']}"
         )
         
-        # Build EPUB
-        epub_path = build_epub(state["slug"], state["rewritten"], metadata)
+        # Get extended metadata and cover if available
+        pub_metadata = state.get("publishing_metadata")
+        cover_path = Path(state["cover_path"]) if state.get("cover_path") else None
+        
+        # Build EPUB with all enhancements
+        epub_path = build_epub(
+            state["slug"],
+            state["rewritten"],
+            metadata,
+            publishing_metadata=pub_metadata,
+            cover_path=cover_path
+        )
         
         # Validate EPUB quality
         validation_result = validate_epub_structure(epub_path)
@@ -940,6 +1046,11 @@ def build_graph() -> StateGraph:
     graph.add_node("rewrite", rewrite_node)
     graph.add_node("qa_text", qa_text_node)
     graph.add_node("remediate", remediate_node)
+    
+    # NEW NODES:
+    graph.add_node("metadata", metadata_node)
+    graph.add_node("cover", cover_node)
+    
     graph.add_node("epub", epub_node)
     graph.add_node("tts", tts_node)
     graph.add_node("master", master_node)
@@ -956,16 +1067,21 @@ def build_graph() -> StateGraph:
     
     # Conditional edge for QA
     def should_remediate(state: FlowState) -> str:
-        return "remediate" if not state.get("qa_text_ok", True) else "epub"
+        return "remediate" if not state.get("qa_text_ok", True) else "metadata"
     
     graph.add_conditional_edges(
         "qa_text",
         should_remediate,
         {
-            "remediate": "epub",  # Skip remediation for now, go directly to epub
-            "epub": "epub"
+            "remediate": "metadata",
+            "metadata": "metadata"
         }
     )
+    
+    # NEW FLOW:
+    graph.add_edge("metadata", "cover")
+    graph.add_edge("cover", "epub")
+    
     graph.add_edge("epub", "tts")
     graph.add_edge("tts", "master")
     graph.add_edge("master", "qa_audio")

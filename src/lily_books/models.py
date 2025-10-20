@@ -222,6 +222,59 @@ class CheckerOutput(BaseModel):
     )
 
 
+class PublishingMetadata(BaseModel):
+    """Extended metadata for publishing."""
+    title: str
+    subtitle: Optional[str] = None
+    author: str
+    original_author: str  # For public domain works
+    publisher: str = "Modernized Classics Press"
+    publisher_url: Optional[str] = None
+    publication_year: int = Field(default_factory=lambda: 2025)
+    isbn_ebook: Optional[str] = None
+    isbn_audiobook: Optional[str] = None
+    
+    # Marketing
+    short_description: str  # 1-2 sentences
+    long_description: str   # 200-300 words
+    keywords: List[str] = Field(default_factory=list)
+    categories: List[str] = Field(default_factory=list)
+    
+    # Legal
+    copyright_notice: str = Field(
+        default="This modernized edition © {year} {publisher}. Original work in public domain."
+    )
+    modernization_disclaimer: str = Field(
+        default="This edition features AI-assisted language modernization to make the text more accessible to contemporary readers while preserving the author's original meaning and style."
+    )
+    license: str = "All rights reserved"
+    
+    # Branding
+    cover_style: str = "classic"  # Options: classic, modern, minimalist, whimsical classic, academic, artistic, nostalgic
+    cover_prompt: Optional[str] = None  # For AI cover generation
+    
+    # Publisher branding
+    publisher_logo: Optional[str] = None  # URL or path to publisher logo
+    publisher_tagline: str = "Making Classic Literature Accessible to Modern Readers"
+    series_name: Optional[str] = None  # e.g., "Modernized Classics Series"
+    series_number: Optional[int] = None  # Position in series
+
+
+class CoverDesign(BaseModel):
+    """Cover design specifications."""
+    image_url: Optional[str] = None  # AI-generated or external
+    image_path: Optional[str] = None  # Local file path
+    title: str
+    subtitle: Optional[str] = None
+    author: str
+    publisher: str = "Modernized Classics Press"
+    
+    # Design specs
+    width: int = 1600
+    height: int = 2400
+    format: str = "png"
+
+
 class FlowState(TypedDict):
     """LangGraph state for the pipeline."""
     slug: str
@@ -232,3 +285,10 @@ class FlowState(TypedDict):
     rewritten: list[str] | None
     qa_text_ok: bool | None
     audio_ok: bool | None
+    epub_path: Optional[str]
+    epub_quality_score: Optional[int]
+    
+    # NEW FIELDS:
+    publishing_metadata: Optional[PublishingMetadata]
+    cover_design: Optional[CoverDesign]
+    cover_path: Optional[str]

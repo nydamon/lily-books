@@ -8,7 +8,7 @@ from typing import List
 from ebooklib import epub
 from langchain_core.tools import tool
 
-from ..models import ChapterDoc, BookMetadata, ParaPair
+from ..models import ChapterDoc, BookMetadata, ParaPair, PublishingMetadata
 from ..config import get_project_paths
 
 logger = logging.getLogger(__name__)
@@ -42,8 +42,136 @@ def escape_html(text: str) -> str:
     return emphasized
 
 
-def build_epub(slug: str, chapters: List[ChapterDoc], metadata: BookMetadata) -> Path:
-    """Build EPUB3 file from modernized chapters."""
+def create_copyright_page(metadata: PublishingMetadata) -> str:
+    """Generate copyright page HTML."""
+    year = metadata.publication_year
+    
+    html = f"""
+    <html>
+    <head>
+        <title>Copyright</title>
+    </head>
+    <body>
+        <h2>Copyright</h2>
+        
+        <p><strong>{metadata.title}</strong></p>
+        <p>Modernized Edition</p>
+        
+        <p>{metadata.copyright_notice.format(year=year, publisher=metadata.publisher)}</p>
+        
+        <p>Original work by {metadata.original_author}</p>
+        
+        <p><strong>ISBN (ebook):</strong> {metadata.isbn_ebook or 'Not assigned'}</p>
+        
+        <h3>About This Edition</h3>
+        <p>{metadata.modernization_disclaimer}</p>
+        
+        <p><strong>Publisher:</strong> {metadata.publisher}</p>
+        {f'<p><strong>Website:</strong> {metadata.publisher_url}</p>' if metadata.publisher_url else ''}
+        
+        <p><strong>Published:</strong> {year}</p>
+        
+        <p style="margin-top: 2em; font-size: 0.9em; color: #666;">
+        {metadata.license}
+        </p>
+    </body>
+    </html>
+    """
+    return html
+
+
+def create_about_page(metadata: PublishingMetadata) -> str:
+    """Generate 'About This Edition' page."""
+    html = f"""
+    <html>
+    <head>
+        <title>About This Edition</title>
+    </head>
+    <body>
+        <h2>About This Modernized Edition</h2>
+        
+        <p>{metadata.long_description}</p>
+        
+        <h3>What's Different?</h3>
+        <p>This edition updates archaic language and phrasing to make the text more accessible to contemporary readers, including:</p>
+        <ul>
+            <li>Simplified vocabulary where original terms are no longer in common use</li>
+            <li>Updated sentence structures for modern readability</li>
+            <li>Clarified pronouns and references</li>
+            <li>Preserved original dialogue and character voices</li>
+        </ul>
+        
+        <h3>What's Preserved?</h3>
+        <p>We maintain complete fidelity to:</p>
+        <ul>
+            <li>The original plot and story structure</li>
+            <li>Character names, relationships, and development</li>
+            <li>Historical and cultural context</li>
+            <li>The author's literary style and tone</li>
+            <li>All original dialogue and quoted material</li>
+        </ul>
+        
+        <p><em>This edition is ideal for students, educators, and readers who want to experience classic literature in a more accessible format.</em></p>
+    </body>
+    </html>
+    """
+    return html
+
+
+def create_back_matter(metadata: PublishingMetadata, slug: str) -> str:
+    """Generate back matter (other titles, call-to-action)."""
+    html = f"""
+    <html>
+    <head>
+        <title>More from {metadata.publisher}</title>
+    </head>
+    <body>
+        <h2>Enjoy This Book?</h2>
+        
+        <p>If you found this modernized edition helpful, please consider:</p>
+        <ul>
+            <li><strong>Leaving a review</strong> to help other readers discover it</li>
+            <li><strong>Sharing it</strong> with students, teachers, and book lovers</li>
+            <li><strong>Exploring our other titles</strong> in the Modernized Classics series</li>
+        </ul>
+        
+        <h3>About {metadata.publisher}</h3>
+        <p>{metadata.publisher_tagline}</p>
+        <p>We're dedicated to making classic literature accessible to modern readers through careful, thoughtful modernization that preserves the beauty and meaning of the original works.</p>
+        
+        {f'<p><strong>Series:</strong> {metadata.series_name}' if metadata.series_name else ''}
+        {f'<p><strong>Volume:</strong> {metadata.series_number}' if metadata.series_number else ''}
+        
+        {f'<p>Visit us at: {metadata.publisher_url}</p>' if metadata.publisher_url else ''}
+        
+        <h3>Coming Soon</h3>
+        <p><em>More modernized classics for students and lifelong learners.</em></p>
+        
+        <p style="margin-top: 3em; text-align: center; font-size: 0.9em; color: #666;">
+        Thank you for reading!
+        </p>
+    </body>
+    </html>
+    """
+    return html
+
+
+def build_epub(
+    slug: str, 
+    chapters: List[ChapterDoc], 
+    metadata: BookMetadata,
+    publishing_metadata: PublishingMetadata = None,
+    cover_path: Path = None
+) -> Path:
+    """Build EPUB3 file from modernized chapters.
+    
+    Args:
+        slug: Project slug
+        chapters: List of modernized chapters
+        metadata: Basic book metadata
+        publishing_metadata: Extended publishing metadata (optional)
+        cover_path: Path to cover image (optional)
+    """
     from ..config import ensure_directories
     ensure_directories(slug)
     paths = get_project_paths(slug)
@@ -56,6 +184,18 @@ def build_epub(slug: str, chapters: List[ChapterDoc], metadata: BookMetadata) ->
     book.set_title(metadata.title)
     book.set_language(metadata.language)
     book.add_author(metadata.author)
+    
+    # Add cover image if provided
+    if cover_path and cover_path.exists():
+        with open(cover_path, 'rb') as f:
+            cover_image = epub.EpubItem(
+                uid="cover_image",
+                file_name="images/cover.png",
+                media_type="image/png",
+                content=f.read()
+            )
+            book.add_item(cover_image)
+            book.set_cover("images/cover.png", cover_image.content)
     
     # Create CSS first
     style = """
@@ -115,6 +255,32 @@ def build_epub(slug: str, chapters: List[ChapterDoc], metadata: BookMetadata) ->
     spine = ["cover"]
     toc = []
     
+    # Add copyright page
+    if publishing_metadata:
+        copyright_html = create_copyright_page(publishing_metadata)
+        copyright_page = epub.EpubHtml(
+            title="Copyright",
+            file_name="copyright.xhtml",
+            lang=metadata.language
+        )
+        copyright_page.content = copyright_html
+        copyright_page.add_item(nav_css)
+        book.add_item(copyright_page)
+        spine.append(copyright_page)
+        
+        # Add "About This Edition" page
+        about_html = create_about_page(publishing_metadata)
+        about_page = epub.EpubHtml(
+            title="About This Edition",
+            file_name="about.xhtml",
+            lang=metadata.language
+        )
+        about_page.content = about_html
+        about_page.add_item(nav_css)
+        book.add_item(about_page)
+        spine.append(about_page)
+        toc.append(about_page)  # Include in TOC
+    
     # Process each chapter
     for chapter_doc in chapters:
         if not chapter_doc.pairs:
@@ -159,6 +325,20 @@ def build_epub(slug: str, chapters: List[ChapterDoc], metadata: BookMetadata) ->
         
         # Add to TOC
         toc.append(chapter_file)
+    
+    # Add back matter
+    if publishing_metadata:
+        back_html = create_back_matter(publishing_metadata, slug)
+        back_page = epub.EpubHtml(
+            title=f"More from {publishing_metadata.publisher}",
+            file_name="back_matter.xhtml",
+            lang=metadata.language
+        )
+        back_page.content = back_html
+        back_page.add_item(nav_css)
+        book.add_item(back_page)
+        spine.append(back_page)
+        toc.append(back_page)
     
     # Set spine
     book.spine = spine

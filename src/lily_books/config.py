@@ -20,8 +20,9 @@ class Settings(BaseSettings):
     elevenlabs_api_key: str
     
     # Model configurations
-    openai_model: str = "openai/gpt-5"
-    openai_fallback_model: str = "openai/gpt-5-mini"
+    # GPT-5 Mini: https://platform.openai.com/docs/models/gpt-5-mini
+    openai_model: str = "gpt-5-mini"
+    openai_fallback_model: str = "gpt-4o-mini"
     anthropic_model: str = "anthropic/claude-haiku-4.5"
     anthropic_fallback_model: str = "anthropic/claude-sonnet-4.5"
     elevenlabs_voice_id: str = "EXAVITQu4vr4xnSDxMaL"  # Sarah
@@ -65,6 +66,11 @@ class Settings(BaseSettings):
     langfuse_secret_key: str = ""
     langfuse_host: str = "https://cloud.langfuse.com"
     
+    # Publishing options
+    use_ai_covers: bool = False  # Set to True to use DALL-E
+    publisher_name: str = "Modernized Classics Press"
+    publisher_url: str = ""
+    
     model_config = {
         "env_file": ".env",
         "env_file_encoding": "utf-8"
@@ -100,6 +106,11 @@ def ensure_directories(slug: str) -> None:
 
 # Global settings instance
 settings = Settings()
+
+
+def get_config() -> Settings:
+    """Get the global configuration instance."""
+    return settings
 
 
 def get_quality_settings(slug: str) -> dict:
