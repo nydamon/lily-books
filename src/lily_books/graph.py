@@ -365,64 +365,92 @@ async def qa_text_node_async(
                 chapter_doc = chapter_docs[i]
                 
                 if isinstance(result, Exception):
-                    # Track chapter failure but continue processing
+                    # Critical error - log and continue per failure_mode
+                    error_msg = f"QA crashed for chapter {chapter_doc.chapter}: {str(result)}"
+                    logger.error(error_msg)
+                    
                     failed_chapters.append(chapter_doc.chapter)
+                    all_passed = False
+                    
                     save_chapter_failure(
-                        state["slug"], 
-                        chapter_doc.chapter, 
-                        "qa_text", 
-                        str(result)
+                        state["slug"],
+                        chapter_doc.chapter,
+                        "qa_text",
+                        error_msg
                     )
                     
                     append_log_entry(state["slug"], {
                         "node": "qa_text",
                         "chapter": chapter_doc.chapter,
                         "status": "failed",
-                        "error": str(result)
+                        "error": error_msg
                     })
                 else:
+                    # Unpack result
                     passed, issues, updated_doc = result
                     
-                    # Save QA issues
+                    # Save QA results
                     save_qa_issues(state["slug"], chapter_doc.chapter, issues)
-                    
-                    # Update chapter doc
                     save_chapter_doc(state["slug"], chapter_doc.chapter, updated_doc)
                     
-                    all_passed = all_passed and passed
-                    total_issues.extend(issues)
-                    
-                    append_log_entry(state["slug"], {
-                        "node": "qa_text",
-                        "chapter": chapter_doc.chapter,
-                        "passed": passed,
-                        "issues": len(issues),
-                        "status": "completed"
-                    })
+                    # Track failures
+                    if not passed:
+                        all_passed = False
+                        failed_chapters.append(chapter_doc.chapter)
+                        
+                        # Log failure for remediation
+                        save_chapter_failure(
+                            state["slug"],
+                            chapter_doc.chapter,
+                            "qa_text",
+                            f"Quality gate failed: {len(issues)} issues"
+                        )
+                        
+                        append_log_entry(state["slug"], {
+                            "node": "qa_text",
+                            "chapter": chapter_doc.chapter,
+                            "passed": False,
+                            "issues": len(issues),
+                            "status": "failed"
+                        })
+                    else:
+                        # Success
+                        total_issues.extend(issues)
+                        
+                        append_log_entry(state["slug"], {
+                            "node": "qa_text",
+                            "chapter": chapter_doc.chapter,
+                            "passed": True,
+                            "issues": len(issues),
+                            "status": "completed"
+                        })
         
-        # If any chapters failed QA, raise error with failed list
+        # Final status
         if failed_chapters:
-            raise QAError(
-                f"Failed to QA chapters: {failed_chapters}",
-                slug=state["slug"],
-                node="qa_text",
-                context={
-                    "successful_chapters": len(state["rewritten"]) - len(failed_chapters),
-                    "failed_chapters": failed_chapters,
-                    "all_passed": all_passed
-                }
-            )
+            append_log_entry(state["slug"], {
+                "node": "qa_text",
+                "status": "completed_with_failures",
+                "failed_chapters": failed_chapters,
+                "passed_chapters": len(chapter_docs) - len(failed_chapters) + len(skipped_chapters)
+            })
+            
+            # Return state with failure tracking
+            return {
+                **state,
+                "qa_text_ok": False,
+                "failed_chapters": failed_chapters,
+                "total_issues": total_issues
+            }
         
+        # All passed
         append_log_entry(state["slug"], {
             "node": "qa_text",
             "status": "completed",
-            "all_passed": all_passed,
-            "total_issues": len(total_issues),
-            "skipped_chapters": len(skipped_chapters),
-            "processed_chapters": len(state["rewritten"]) - len(skipped_chapters) - len(failed_chapters)
+            "all_passed": True,
+            "total_issues": len(total_issues)
         })
         
-        return {**state, "qa_text_ok": all_passed}
+        return {**state, "qa_text_ok": True, "total_issues": total_issues}
         
     except Exception as e:
         append_log_entry(state["slug"], {
@@ -471,27 +499,44 @@ def qa_text_node(state: FlowState) -> FlowState:
                     })
                     continue
                 
-                # QA chapter (soft validation - trust LLM judgment)
+                # QA chapter with graduated quality gates
                 passed, issues, updated_doc = qa_chapter(chapter_doc, slug=state["slug"])
                 
-                # Save QA issues for observability
+                # Save QA results
                 save_qa_issues(state["slug"], chapter_doc.chapter, issues)
-                
-                # Update chapter doc
                 save_chapter_doc(state["slug"], chapter_doc.chapter, updated_doc)
                 
-                # Always pass - trust LLM judgment
-                all_passed = True  # Soft validation
-                total_issues.extend(issues)
-                
-                append_log_entry(state["slug"], {
-                    "node": "qa_text",
-                    "chapter": chapter_doc.chapter,
-                    "passed": True,  # Always pass
-                    "issues": len(issues),
-                    "status": "completed",
-                    "note": "soft_validation_trust_llm"
-                })
+                # Track failures
+                if not passed:
+                    all_passed = False
+                    failed_chapters.append(chapter_doc.chapter)
+                    
+                    # Log failure for remediation
+                    save_chapter_failure(
+                        state["slug"],
+                        chapter_doc.chapter,
+                        "qa_text",
+                        f"Quality gate failed: {len(issues)} issues"
+                    )
+                    
+                    append_log_entry(state["slug"], {
+                        "node": "qa_text",
+                        "chapter": chapter_doc.chapter,
+                        "passed": False,
+                        "issues": len(issues),
+                        "status": "failed"
+                    })
+                else:
+                    # Success
+                    total_issues.extend(issues)
+                    
+                    append_log_entry(state["slug"], {
+                        "node": "qa_text",
+                        "chapter": chapter_doc.chapter,
+                        "passed": True,
+                        "issues": len(issues),
+                        "status": "completed"
+                    })
                 
             except Exception as e:
                 # Log error but continue processing (soft validation)
@@ -518,22 +563,32 @@ def qa_text_node(state: FlowState) -> FlowState:
                 # Continue processing other chapters instead of failing
                 continue
         
-        # Log summary instead of raising error (soft validation)
+        # Final status
         if failed_chapters:
-            logger.warning(f"QA completed with {len(failed_chapters)} failed chapters: {failed_chapters}")
-        else:
-            logger.info("QA completed successfully for all chapters")
+            append_log_entry(state["slug"], {
+                "node": "qa_text",
+                "status": "completed_with_failures",
+                "failed_chapters": failed_chapters,
+                "passed_chapters": len(state["rewritten"]) - len(failed_chapters) + len(skipped_chapters)
+            })
+            
+            # Return state with failure tracking
+            return {
+                **state,
+                "qa_text_ok": False,
+                "failed_chapters": failed_chapters,
+                "total_issues": total_issues
+            }
         
+        # All passed
         append_log_entry(state["slug"], {
             "node": "qa_text",
             "status": "completed",
-            "all_passed": all_passed,
-            "total_issues": len(total_issues),
-            "skipped_chapters": len(skipped_chapters),
-            "processed_chapters": len(state["rewritten"]) - len(skipped_chapters) - len(failed_chapters)
+            "all_passed": True,
+            "total_issues": len(total_issues)
         })
         
-        return {**state, "qa_text_ok": all_passed}
+        return {**state, "qa_text_ok": True, "total_issues": total_issues}
         
     except Exception as e:
         append_log_entry(state["slug"], {

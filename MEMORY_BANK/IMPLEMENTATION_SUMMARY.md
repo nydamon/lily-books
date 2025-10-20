@@ -3,6 +3,8 @@
 **Date**: 2025-01-02  
 **Status**: ✅ Complete
 
+**Latest Update**: 2025-01-02 - Added Graduated Quality Gates
+
 ## Overview
 
 Implemented comprehensive stability improvements to the Lily Books pipeline following LangChain best practices. All changes focus on reliability, observability, and recovery without overengineering.
@@ -435,6 +437,70 @@ The pipeline now:
 - Validation now correctly detects emphasis preservation issues and formatting problems
 - Pipeline properly fails when validation errors occur (no more silent failures)
 - Reference: https://docs.claude.com/en/docs/about-claude/models/overview
+
+## Quality Control System (January 2025)
+
+### Graduated Quality Gates
+
+The pipeline now enforces objective quality standards while trusting LLM judgment for subjective decisions:
+
+**Critical Failures (Pipeline Stops):**
+- LLM flags critical severity issues
+- Fidelity score < 85/100 (configurable)
+- Readability outside grade 5-12 range
+- Quote/emphasis preservation failures (if configured as critical)
+
+**High Severity Warnings (Continue with Log):**
+- Formatting issues (default for quotes/emphasis)
+- Style inconsistencies flagged by LLM
+- Archaic phrases detected
+
+**Trust LLM Judgment:**
+- Tone and literary quality
+- Subjective modernization decisions
+- Minor word choice variations
+
+### Configuration
+
+Global defaults in `.env`:
+```
+QA_MIN_FIDELITY=85
+QA_TARGET_FIDELITY=92
+QA_MIN_READABILITY_GRADE=5.0
+QA_MAX_READABILITY_GRADE=12.0
+QA_EMPHASIS_SEVERITY=high
+QA_QUOTE_SEVERITY=high
+QA_FAILURE_MODE=continue_with_log
+```
+
+Per-book overrides in `meta/book.yaml`:
+```yaml
+quality_control:
+  min_fidelity: 80  # Lower for particularly difficult text
+  notes: "Philosophical content requires more complex language"
+```
+
+### Failure Workflow
+
+1. Pipeline processes all chapters
+2. Failed chapters logged to `meta/chapter_failures.jsonl`
+3. State returns `qa_text_ok: False` with `failed_chapters: [...]`
+4. User reviews failures, adjusts config if needed
+5. Remediation: `remediate_chapters(slug)` retries only failed chapters
+
+### Implementation Details
+
+**Files Modified:**
+- `src/lily_books/config.py` - Added quality control settings and `get_quality_settings()`
+- `src/lily_books/chains/checker.py` - Added `evaluate_chapter_quality()` function
+- `src/lily_books/graph.py` - Updated QA nodes to respect quality gates
+- `src/lily_books/models.py` - Added `QualityControl` class to `BookMetadata`
+- `tests/test_quality_gates.py` - Comprehensive test suite
+
+**Key Functions:**
+- `evaluate_chapter_quality()` - Centralized quality evaluation logic
+- `get_quality_settings()` - Loads global + per-book configuration
+- Quality gates enforce objective standards while preserving LLM judgment
 
 Ready for production use.
 

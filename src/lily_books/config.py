@@ -42,6 +42,17 @@ class Settings(BaseSettings):
     llm_quality_advisor_enabled: bool = True
     use_llm_for_structure: bool = True
     
+    # Quality control thresholds
+    qa_min_fidelity: int = 85  # Strict threshold for sellable quality
+    qa_target_fidelity: int = 92  # Target mean fidelity
+    qa_min_readability_grade: float = 5.0  # Minimum FK grade
+    qa_max_readability_grade: float = 12.0  # Maximum FK grade
+    qa_target_min_grade: float = 7.0  # Target minimum
+    qa_target_max_grade: float = 9.0  # Target maximum
+    qa_emphasis_severity: str = "high"  # critical/high/medium/low
+    qa_quote_severity: str = "high"  # critical/high/medium/low
+    qa_failure_mode: str = "continue_with_log"  # continue_with_log/fail_fast
+    
     # Caching settings
     cache_enabled: bool = True
     cache_ttl_seconds: int = 3600  # 1 hour
@@ -89,4 +100,39 @@ def ensure_directories(slug: str) -> None:
 
 # Global settings instance
 settings = Settings()
+
+
+def get_quality_settings(slug: str) -> dict:
+    """Get quality settings with per-book overrides from book.yaml."""
+    from .storage import load_book_metadata
+    
+    # Start with global defaults
+    quality_config = {
+        "min_fidelity": settings.qa_min_fidelity,
+        "target_fidelity": settings.qa_target_fidelity,
+        "readability_range": (settings.qa_min_readability_grade, settings.qa_max_readability_grade),
+        "emphasis_severity": settings.qa_emphasis_severity,
+        "quote_severity": settings.qa_quote_severity,
+        "failure_mode": settings.qa_failure_mode
+    }
+    
+    # Check for book-specific overrides
+    metadata = load_book_metadata(slug)
+    if metadata and hasattr(metadata, 'quality_control') and metadata.quality_control:
+        # Override with book-specific settings
+        qc = metadata.quality_control
+        if qc.min_fidelity is not None:
+            quality_config["min_fidelity"] = qc.min_fidelity
+        if qc.target_fidelity is not None:
+            quality_config["target_fidelity"] = qc.target_fidelity
+        if qc.readability_range is not None:
+            quality_config["readability_range"] = qc.readability_range
+        if qc.emphasis_severity is not None:
+            quality_config["emphasis_severity"] = qc.emphasis_severity
+        if qc.quote_severity is not None:
+            quality_config["quote_severity"] = qc.quote_severity
+        if qc.failure_mode is not None:
+            quality_config["failure_mode"] = qc.failure_mode
+    
+    return quality_config
 

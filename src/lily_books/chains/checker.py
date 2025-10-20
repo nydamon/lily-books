@@ -5,7 +5,7 @@ import logging
 import re
 
 logger = logging.getLogger(__name__)
-from typing import Dict, Tuple, List, Callable, Optional
+from typing import Dict, Tuple, List, Callable, Optional, Any
 from langchain_core.prompts import PromptTemplate
 from langchain_core.output_parsers import PydanticOutputParser
 import textstat
@@ -22,6 +22,123 @@ from tenacity import stop_after_attempt, wait_exponential, retry_if_exception_ty
 from ..utils.llm_factory import create_llm_with_fallback
 
 logger = logging.getLogger(__name__)
+
+
+def evaluate_chapter_quality(
+    pairs: List[ParaPair],
+    issues: List[Dict],
+    quality_settings: Dict[str, Any]
+) -> Tuple[bool, str, List[QAIssue]]:
+    """
+    Evaluate chapter quality using graduated thresholds.
+    
+    Returns:
+        (passed, failure_reason, critical_qa_issues)
+    """
+    critical_qa_issues = []
+    
+    # Extract metrics from all pairs
+    fidelity_scores = [p.qa.fidelity_score for p in pairs if p.qa and p.qa.fidelity_score is not None]
+    critical_issues_from_llm = []
+    
+    for pair in pairs:
+        if not pair.qa:
+            continue
+        critical_issues_from_llm.extend([i for i in pair.qa.issues if i.severity == "critical"])
+    
+    # CRITICAL CHECK 1: LLM flagged critical issues
+    if critical_issues_from_llm:
+        reason = f"LLM flagged {len(critical_issues_from_llm)} critical issues"
+        critical_qa_issues.extend(critical_issues_from_llm)
+        return False, reason, critical_qa_issues
+    
+    # CRITICAL CHECK 2: Fidelity below minimum threshold
+    if fidelity_scores:
+        min_fidelity = min(fidelity_scores)
+        mean_fidelity = sum(fidelity_scores) / len(fidelity_scores)
+        
+        if min_fidelity < quality_settings["min_fidelity"]:
+            reason = f"Fidelity too low: min={min_fidelity}/100 (threshold: {quality_settings['min_fidelity']})"
+            critical_qa_issues.append(QAIssue(
+                type="fidelity",
+                description=reason,
+                severity="critical"
+            ))
+            return False, reason, critical_qa_issues
+    
+    # CRITICAL CHECK 3: Readability outside acceptable range
+    min_grade, max_grade = quality_settings["readability_range"]
+    for pair in pairs:
+        if not pair.qa or pair.qa.readability_grade is None:
+            continue
+        
+        grade = pair.qa.readability_grade
+        if grade < min_grade:
+            reason = f"Text oversimplified: FK grade {grade:.1f} (minimum: {min_grade})"
+            critical_qa_issues.append(QAIssue(
+                type="readability",
+                description=f"Paragraph {pair.i}: {reason}",
+                severity="critical"
+            ))
+            return False, f"Paragraph {pair.i}: {reason}", critical_qa_issues
+        
+        if grade > max_grade:
+            reason = f"Text too complex: FK grade {grade:.1f} (maximum: {max_grade})"
+            critical_qa_issues.append(QAIssue(
+                type="readability",
+                description=f"Paragraph {pair.i}: {reason}",
+                severity="critical"
+            ))
+            return False, f"Paragraph {pair.i}: {reason}", critical_qa_issues
+    
+    # HIGH SEVERITY CHECK: Formatting issues
+    quote_severity = quality_settings.get("quote_severity", "high")
+    emphasis_severity = quality_settings.get("emphasis_severity", "high")
+    
+    for pair in pairs:
+        if not pair.qa:
+            continue
+        
+        # Quote preservation
+        if pair.qa.quote_count_match is False:
+            issue = QAIssue(
+                type="formatting",
+                description=f"Paragraph {pair.i}: Quote count mismatch - dialogue may be missing",
+                severity=quote_severity
+            )
+            critical_qa_issues.append(issue)
+            
+            if quote_severity == "critical":
+                return False, "Quote preservation failed", critical_qa_issues
+        
+        # Emphasis preservation
+        if pair.qa.emphasis_preserved is False:
+            issue = QAIssue(
+                type="formatting",
+                description=f"Paragraph {pair.i}: Emphasis markers not preserved",
+                severity=emphasis_severity
+            )
+            critical_qa_issues.append(issue)
+            
+            if emphasis_severity == "critical":
+                return False, "Emphasis preservation failed", critical_qa_issues
+    
+    # PASSED - Trust LLM for everything else
+    # Collect all issues for tracking (including formatting issues that didn't fail)
+    all_issues = []
+    for pair in pairs:
+        if not pair.qa:
+            continue
+        # Add all issues from LLM (critical ones already handled above)
+        all_issues.extend(pair.qa.issues)
+    
+    # Add formatting issues that were tracked but didn't cause failure
+    all_issues.extend(critical_qa_issues)
+    
+    if all_issues:
+        logger.warning(f"Chapter passed with {len(all_issues)} issues tracked")
+    
+    return True, "", all_issues
 
 
 # Comprehensive LangChain system prompt for quality assurance
@@ -294,13 +411,41 @@ async def qa_chapter_async(
                 issues=checker_result.issues
             )
     
-    # Determine if chapter passed QA (soft validation - trust LLM judgment)
-    # Log metrics for observability instead of enforcing thresholds
-    logger.info(f"Chapter QA summary: min_fidelity={min_fidelity}, "
-                f"readability_ok={readability_ok}, issues={len(issues)}")
+    # Load quality settings
+    from ..config import get_quality_settings
+    quality_settings = get_quality_settings(slug) if slug else {
+        "min_fidelity": 85,
+        "readability_range": (5.0, 12.0),
+        "emphasis_severity": "high",
+        "quote_severity": "high"
+    }
     
-    # Trust LLM judgment - don't enforce strict thresholds
-    passed = True  # Always pass, let LLM decide quality
+    # Evaluate chapter quality with graduated gates
+    passed, failure_reason, critical_issues = evaluate_chapter_quality(
+        doc.pairs, 
+        issues, 
+        quality_settings
+    )
+    
+    # Log evaluation results
+    fidelity_scores = [p.qa.fidelity_score for p in doc.pairs if p.qa and p.qa.fidelity_score]
+    min_fidelity = min(fidelity_scores) if fidelity_scores else None
+    mean_fidelity = sum(fidelity_scores) / len(fidelity_scores) if fidelity_scores else None
+    
+    logger.info(
+        f"Chapter QA summary: passed={passed}, "
+        f"min_fidelity={min_fidelity}, mean_fidelity={mean_fidelity:.1f}, "
+        f"issues={len(issues)}, critical_issues={len(critical_issues)}"
+    )
+    
+    if not passed:
+        logger.error(f"Chapter FAILED QA: {failure_reason}")
+        # Merge critical issues into main issues list
+        issues.extend([{
+            "type": issue.type,
+            "description": issue.description,
+            "severity": issue.severity
+        } for issue in critical_issues])
     
     return passed, issues, doc
 
@@ -485,13 +630,41 @@ def qa_chapter(doc: ChapterDoc, slug: str = None) -> Tuple[bool, List[Dict], Cha
             # Re-raise the exception to fail the entire QA process
             raise Exception(f"QA validation failed for paragraph {pair.i}: {error_msg}") from e
     
-    # Determine if chapter passed QA (soft validation - trust LLM judgment)
-    # Log metrics for observability instead of enforcing thresholds
-    logger.info(f"Chapter QA summary: min_fidelity={min_fidelity}, "
-                f"readability_ok={readability_ok}, issues={len(issues)}")
+    # Load quality settings
+    from ..config import get_quality_settings
+    quality_settings = get_quality_settings(slug) if slug else {
+        "min_fidelity": 85,
+        "readability_range": (5.0, 12.0),
+        "emphasis_severity": "high",
+        "quote_severity": "high"
+    }
     
-    # Trust LLM judgment - don't enforce strict thresholds
-    passed = True  # Always pass, let LLM decide quality
+    # Evaluate chapter quality with graduated gates
+    passed, failure_reason, critical_issues = evaluate_chapter_quality(
+        doc.pairs, 
+        issues, 
+        quality_settings
+    )
+    
+    # Log evaluation results
+    fidelity_scores = [p.qa.fidelity_score for p in doc.pairs if p.qa and p.qa.fidelity_score]
+    min_fidelity = min(fidelity_scores) if fidelity_scores else None
+    mean_fidelity = sum(fidelity_scores) / len(fidelity_scores) if fidelity_scores else None
+    
+    logger.info(
+        f"Chapter QA summary: passed={passed}, "
+        f"min_fidelity={min_fidelity}, mean_fidelity={mean_fidelity:.1f}, "
+        f"issues={len(issues)}, critical_issues={len(critical_issues)}"
+    )
+    
+    if not passed:
+        logger.error(f"Chapter FAILED QA: {failure_reason}")
+        # Merge critical issues into main issues list
+        issues.extend([{
+            "type": issue.type,
+            "description": issue.description,
+            "severity": issue.severity
+        } for issue in critical_issues])
     
     return passed, issues, doc
 

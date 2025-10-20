@@ -53,6 +53,17 @@ class PackageError(PipelineError):
     pass
 
 
+class QualityControl(BaseModel):
+    """Per-book quality control overrides."""
+    min_fidelity: Optional[int] = None
+    target_fidelity: Optional[int] = None
+    readability_range: Optional[tuple[float, float]] = None
+    emphasis_severity: Optional[str] = None
+    quote_severity: Optional[str] = None
+    failure_mode: Optional[str] = None
+    notes: Optional[str] = None  # For documenting why overrides were needed
+
+
 class QAIssue(BaseModel):
     """A validation issue found during QA."""
     type: str
@@ -132,6 +143,7 @@ class BookMetadata(BaseModel):
         "ebook_usd": 2.99,
         "audiobook_usd": 9.95
     })
+    quality_control: Optional[QualityControl] = None
 
 
 class ModernizedParagraph(BaseModel):
