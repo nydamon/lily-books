@@ -20,10 +20,24 @@ def filter_empty_paragraphs(pairs: List[ParaPair]) -> List[ParaPair]:
     for pair in pairs:
         if pair.modern and pair.modern.strip():
             # Check for meaningful content (not just whitespace or placeholders)
-            if len(pair.modern.strip()) > 10 and not pair.modern.strip().startswith('['):
-                valid_pairs.append(pair)
-            else:
-                logger.warning(f"Skipping paragraph {pair.i}: content too short or placeholder")
+            modern_text = pair.modern.strip()
+            
+            # Skip validation failures
+            if '[Validation failed' in modern_text:
+                logger.warning(f"Skipping paragraph {pair.i}: validation failure")
+                continue
+                
+            # Skip empty or very short content (but allow short meaningful text)
+            if len(modern_text) < 3:
+                logger.warning(f"Skipping paragraph {pair.i}: content too short")
+                continue
+                
+            # Skip placeholder patterns
+            if modern_text.startswith('[') and modern_text.endswith(']'):
+                logger.warning(f"Skipping paragraph {pair.i}: placeholder pattern")
+                continue
+                
+            valid_pairs.append(pair)
         else:
             logger.warning(f"Skipping paragraph {pair.i}: empty content")
     
@@ -195,7 +209,7 @@ def build_epub(
                 content=f.read()
             )
             book.add_item(cover_image)
-            book.set_cover("images/cover.png", cover_image.content)
+            # Don't use set_cover() as it creates duplicate files
     
     # Create CSS first
     style = """
