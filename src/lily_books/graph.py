@@ -8,6 +8,8 @@ from typing import Dict, Any, List, Callable, Optional
 logger = logging.getLogger(__name__)
 from langgraph.graph import StateGraph, END
 from langgraph.checkpoint.sqlite import SqliteSaver
+from .config import get_config
+from .utils.debug_logger import log_step, update_activity, check_for_hang, debug_async_function
 
 from .models import (
     FlowState, ChapterSplit, ChapterDoc, BookMetadata,
@@ -80,6 +82,13 @@ def chapterize_node(state: FlowState) -> FlowState:
         # Chapterize text
         chapters = ChapterizeChain.invoke({"raw_text": state["raw_text"]})
         
+        # Filter chapters if requested
+        requested_chapters = state.get("requested_chapters")
+        if requested_chapters:
+            original_count = len(chapters)
+            chapters = [ch for ch in chapters if ch.chapter in requested_chapters]
+            logger.info(f"Filtered chapters: {original_count} -> {len(chapters)} (requested: {requested_chapters})")
+        
         # Save chapters
         chapters_data = [ch.model_dump() for ch in chapters]
         save_chapters_jsonl(state["slug"], chapters_data)
@@ -106,6 +115,7 @@ def chapterize_node(state: FlowState) -> FlowState:
         )
 
 
+@debug_async_function
 async def rewrite_node_async(
     state: FlowState, 
     progress_callback: Optional[Callable] = None
@@ -125,7 +135,10 @@ async def rewrite_node_async(
         tasks = []
         chapter_splits = []
         
+        logger.info(f"rewrite_node_async processing {len(state['chapters'])} chapters: {[ch.chapter for ch in state['chapters']]}")
+        
         for chapter_split in state["chapters"]:
+            logger.info(f"Processing chapter {chapter_split.chapter}")
             # Check if chapter already exists on disk
             existing_doc = load_chapter_doc(state["slug"], chapter_split.chapter)
             if existing_doc:
@@ -146,9 +159,52 @@ async def rewrite_node_async(
             tasks.append(rewrite_chapter_async(chapter_split, state["slug"], progress_callback))
             chapter_splits.append(chapter_split)
         
-        # Wait for all chapters to complete
+        # Process chapters with concurrency control using semaphore
         if tasks:
-            results = await asyncio.gather(*tasks, return_exceptions=True)
+            log_step("rewrite_node_async.parallel_start",
+                     task_count=len(tasks),
+                     chapters=[ch.chapter for ch in chapter_splits])
+            update_activity("rewrite_node_async parallel processing start")
+
+            # Use semaphore to limit concurrent OpenRouter API calls (max 3 concurrent)
+            semaphore = asyncio.Semaphore(3)
+
+            async def rate_limited_chapter(task, chapter_num, index):
+                async with semaphore:
+                    try:
+                        log_step("rewrite_node_async.processing_chapter",
+                                 chapter=chapter_num,
+                                 progress=f"{index+1}/{len(tasks)}")
+                        update_activity(f"Processing chapter {chapter_num}")
+
+                        result = await asyncio.wait_for(task, timeout=300)  # 5 minutes per chapter
+
+                        log_step("rewrite_node_async.chapter_completed",
+                                 chapter=chapter_num)
+                        update_activity(f"Completed chapter {chapter_num}")
+                        return result
+
+                    except asyncio.TimeoutError:
+                        log_step("rewrite_node_async.chapter_timeout",
+                                 chapter=chapter_num,
+                                 timeout_seconds=300)
+                        logger.error(f"Chapter {chapter_num} timed out after 300 seconds")
+                        return TimeoutError(f"Chapter {chapter_num} timed out")
+                    except Exception as e:
+                        log_step("rewrite_node_async.chapter_error",
+                                 chapter=chapter_num,
+                                 error=str(e))
+                        return e
+
+            # Process with controlled concurrency
+            results = await asyncio.gather(
+                *[rate_limited_chapter(task, chapter_splits[i].chapter, i) for i, task in enumerate(tasks)],
+                return_exceptions=False  # Let exceptions bubble up as results
+            )
+
+            log_step("rewrite_node_async.parallel_completed",
+                     total_results=len(results))
+            update_activity("rewrite_node_async parallel processing completed")
             
             # Process results
             for i, result in enumerate(results):
@@ -608,23 +664,78 @@ def qa_text_node(state: FlowState) -> FlowState:
 
 
 def remediate_node(state: FlowState) -> FlowState:
-    """Remediate failing paragraphs with targeted retries."""
+    """Remediate failing chapters by rerunning rewrite+QA for failed chapters."""
     append_log_entry(state["slug"], {
         "node": "remediate",
         "status": "started"
     })
-    
+
     try:
-        # For now, just mark as remediated
-        # TODO: Implement targeted retry logic
-        
+        failed_chapters = state.get("failed_chapters", [])
+
+        if not failed_chapters:
+            logger.info("No failed chapters to remediate")
+            append_log_entry(state["slug"], {
+                "node": "remediate",
+                "status": "completed",
+                "remediated_count": 0
+            })
+            return {**state, "qa_text_ok": True}
+
+        logger.info(f"Remediating {len(failed_chapters)} failed chapters: {failed_chapters}")
+
+        # Load chapter splits from disk
+        from .storage import load_chapters_jsonl
+        chapters_data = load_chapters_jsonl(state["slug"])
+
+        remediated_count = 0
+        still_failing = []
+
+        for chapter_num in failed_chapters:
+            try:
+                # Find chapter data
+                chapter_data = next((ch for ch in chapters_data if ch["chapter"] == chapter_num), None)
+                if not chapter_data:
+                    logger.warning(f"Chapter {chapter_num} data not found, skipping")
+                    still_failing.append(chapter_num)
+                    continue
+
+                # Convert to ChapterSplit
+                chapter_split = ChapterSplit(**chapter_data)
+
+                # Rerun rewrite
+                logger.info(f"Rewriting failed chapter {chapter_num}")
+                chapter_doc = rewrite_chapter(chapter_split, state["slug"])
+                save_chapter_doc(state["slug"], chapter_doc.chapter, chapter_doc)
+
+                # Rerun QA
+                logger.info(f"QA validation for remediated chapter {chapter_num}")
+                passed, issues, updated_doc = qa_chapter(chapter_doc, slug=state["slug"])
+                save_chapter_doc(state["slug"], chapter_doc.chapter, updated_doc)
+
+                if passed:
+                    logger.info(f"Chapter {chapter_num} remediation successful")
+                    clear_chapter_failure(state["slug"], chapter_num)
+                    remediated_count += 1
+                else:
+                    logger.warning(f"Chapter {chapter_num} still failing after remediation")
+                    still_failing.append(chapter_num)
+
+            except Exception as e:
+                logger.error(f"Remediation failed for chapter {chapter_num}: {e}")
+                still_failing.append(chapter_num)
+
         append_log_entry(state["slug"], {
             "node": "remediate",
-            "status": "completed"
+            "status": "completed",
+            "remediated_count": remediated_count,
+            "still_failing_count": len(still_failing)
         })
-        
-        return {**state, "qa_text_ok": True}
-        
+
+        # Update state - only mark as OK if all chapters passed
+        qa_ok = len(still_failing) == 0
+        return {**state, "qa_text_ok": qa_ok, "failed_chapters": still_failing}
+
     except Exception as e:
         append_log_entry(state["slug"], {
             "node": "remediate",
@@ -646,17 +757,31 @@ def metadata_node(state: FlowState) -> FlowState:
     })
     
     try:
+        # Fetch actual title and author from Gutenberg API
+        import requests
+        book_id = state['book_id']
+        gutendex_url = f"https://gutendex.com/books/{book_id}"
+        response = requests.get(gutendex_url, timeout=10)
+        response.raise_for_status()
+        gutenberg_data = response.json()
+
+        original_title = gutenberg_data.get('title', state['slug'].replace('-', ' ').title())
+        authors = gutenberg_data.get('authors', [])
+        original_author = authors[0]['name'] if authors else "Unknown"
+
+        logger.info(f"Fetched Gutenberg metadata: '{original_title}' by {original_author}")
+
         # Extract original info from ingest
         book_meta = BookMetadata(
-            title=f"{state['slug'].title()}",
-            author="Unknown",  # Will be filled by metadata generator
+            title=original_title,
+            author=original_author,
             public_domain_source=f"Project Gutenberg #{state['book_id']}"
         )
-        
-        # Generate extended metadata
+
+        # Generate extended metadata with REAL title and author
         pub_metadata = generate_metadata(
-            original_title=state['slug'].replace('-', ' ').title(),
-            original_author=book_meta.author,
+            original_title=original_title,
+            original_author=original_author,
             source=book_meta.public_domain_source,
             publisher="Modernized Classics Press",
             chapters=state["rewritten"],
@@ -812,7 +937,8 @@ def tts_node(state: FlowState) -> FlowState:
             
             # Generate TTS
             wav_path = paths["audio"] / f"ch{chapter_doc.chapter:02d}.wav"
-            result = tts_elevenlabs(text, "Rachel", wav_path)
+            config = get_config()
+            result = tts_elevenlabs(text, config.elevenlabs_voice_id, wav_path)
             
             audio_files.append({
                 "chapter": chapter_doc.chapter,
@@ -931,8 +1057,8 @@ def qa_audio_node(state: FlowState) -> FlowState:
         
         for mastered_file in state["mastered_files"]:
             # Get audio metrics
-            wav_path = Path(mastered_file["wav_path"])
-            metrics = get_audio_metrics(wav_path)
+            mp3_path = Path(mastered_file["mp3_path"])
+            metrics = get_audio_metrics(mp3_path)
             
             # Check ACX thresholds
             rms_ok = metrics["rms_db"] is None or metrics["rms_db"] >= -23
@@ -1005,13 +1131,13 @@ def package_node(state: FlowState) -> FlowState:
         # Create publish metadata
         publish_data = {
             "title": f"{state['slug'].title()} (Modernized Student Edition)",
-            "ebook_path": state.get("epub_path"),
+            "ebook_path": str(state.get("epub_path")) if state.get("epub_path") else None,
             "audiobook_chapters": len(state["mastered_files"]),
             "retail_sample": str(sample_path),
-            "completed_at": append_log_entry(state["slug"], {
+            "completed_at": str(append_log_entry(state["slug"], {
                 "node": "package",
                 "status": "completed"
-            })
+            }))
         }
         
         # Save publish metadata
@@ -1038,56 +1164,79 @@ def package_node(state: FlowState) -> FlowState:
 
 def build_graph() -> StateGraph:
     """Build and compile the LangGraph state machine."""
+    config = get_config()
     graph = StateGraph(FlowState)
-    
-    # Add nodes
+
+    # Add nodes (always add core nodes)
     graph.add_node("ingest", ingest_node)
     graph.add_node("chapterize", chapterize_node)
     graph.add_node("rewrite", rewrite_node)
-    graph.add_node("qa_text", qa_text_node)
-    graph.add_node("remediate", remediate_node)
-    
-    # NEW NODES:
+
+    # Optional QA nodes (only if enabled)
+    if config.enable_qa_review:
+        graph.add_node("qa_text", qa_text_node)
+        graph.add_node("remediate", remediate_node)
+
+    # Publishing nodes
     graph.add_node("metadata", metadata_node)
     graph.add_node("cover", cover_node)
-    
     graph.add_node("epub", epub_node)
-    graph.add_node("tts", tts_node)
-    graph.add_node("master", master_node)
-    graph.add_node("qa_audio", qa_audio_node)
-    graph.add_node("package", package_node)
-    
+
+    # Optional audio nodes (only if enabled)
+    if config.enable_audio:
+        graph.add_node("tts", tts_node)
+        graph.add_node("master", master_node)
+        graph.add_node("qa_audio", qa_audio_node)
+        graph.add_node("package", package_node)
+
     # Set entry point
     graph.set_entry_point("ingest")
-    
-    # Add edges
+
+    # Add core edges
     graph.add_edge("ingest", "chapterize")
     graph.add_edge("chapterize", "rewrite")
-    graph.add_edge("rewrite", "qa_text")
-    
-    # Conditional edge for QA
-    def should_remediate(state: FlowState) -> str:
-        return "remediate" if not state.get("qa_text_ok", True) else "metadata"
-    
-    graph.add_conditional_edges(
-        "qa_text",
-        should_remediate,
-        {
-            "remediate": "metadata",
-            "metadata": "metadata"
-        }
-    )
-    
-    # NEW FLOW:
+
+    # Conditional routing based on QA enabled/disabled
+    if config.enable_qa_review:
+        # QA enabled - add QA flow
+        graph.add_edge("rewrite", "qa_text")
+
+        # Conditional edge for QA
+        def should_remediate(state: FlowState) -> str:
+            # Default to False - if QA not run, assume it failed
+            return "remediate" if not state.get("qa_text_ok", False) else "metadata"
+
+        graph.add_conditional_edges(
+            "qa_text",
+            should_remediate,
+            {
+                "remediate": "remediate",
+                "metadata": "metadata"
+            }
+        )
+
+        # Connect remediate to metadata
+        graph.add_edge("remediate", "metadata")
+    else:
+        # QA disabled - skip directly to metadata
+        graph.add_edge("rewrite", "metadata")
+
+    # Publishing flow
     graph.add_edge("metadata", "cover")
     graph.add_edge("cover", "epub")
-    
-    graph.add_edge("epub", "tts")
-    graph.add_edge("tts", "master")
-    graph.add_edge("master", "qa_audio")
-    graph.add_edge("qa_audio", "package")
-    graph.add_edge("package", END)
-    
+
+    # Conditional routing based on audio enabled/disabled
+    if config.enable_audio:
+        # Audio enabled - add full audio pipeline
+        graph.add_edge("epub", "tts")
+        graph.add_edge("tts", "master")
+        graph.add_edge("master", "qa_audio")
+        graph.add_edge("qa_audio", "package")
+        graph.add_edge("package", END)
+    else:
+        # Audio disabled - skip audio nodes and go straight to END
+        graph.add_edge("epub", END)
+
     return graph
 
 
@@ -1101,7 +1250,7 @@ def compile_graph(slug: str = None) -> Any:
         paths = get_project_paths(slug)
         checkpoint_db = paths["meta"] / "checkpoints.db"
         import sqlite3
-        conn = sqlite3.connect(str(checkpoint_db))
+        conn = sqlite3.connect(str(checkpoint_db), check_same_thread=False)
         checkpointer = SqliteSaver(conn)
     else:
         # Use in-memory checkpointer for testing

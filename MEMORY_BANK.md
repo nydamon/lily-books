@@ -430,12 +430,13 @@ LANGFUSE_HOST=https://cloud.langfuse.com
 - All model configurations updated across config.py, env.example, and .env files
 **Status**: ✅ Complete
 
-### 2025-01-20: Publishing Pipeline Implementation and Quality Fixes
-**Decision**: Implement comprehensive publishing pipeline with cover design, metadata generation, and quality improvements
-**Rationale**: Production-ready publishing capabilities, professional output quality, comprehensive error handling
+### 2025-01-20: Publishing Pipeline Implementation and Enhanced Debugging System
+**Decision**: Implement comprehensive publishing pipeline with cover design, metadata generation, quality improvements, and enhanced debugging capabilities
+**Rationale**: Production-ready publishing capabilities, professional output quality, comprehensive error handling, and advanced observability
 **Impact**:
 - **Publishing Pipeline**: Added metadata generation, AI cover creation, ISBN generation, and EPUB enhancement
 - **Quality Fixes**: Resolved QA parser validation errors, illustration placeholder handling, enhanced CSS styling
+- **Enhanced Debugging System**: Implemented comprehensive debugging improvements for production monitoring
 - **Production Readiness**: 92/100 quality score with comprehensive error handling and observability
 - **Cost Optimization**: ~$0.19 per book with AI cover generation
 - **Technical Improvements**:
@@ -447,9 +448,50 @@ LANGFUSE_HOST=https://cloud.langfuse.com
   - Created AI cover generation with DALL-E 3 and template fallback
   - Added ISBN generation for ebooks and audiobooks
   - Enhanced EPUB structure with front/back matter and professional styling
+  - **Debugging Enhancements**:
+    - Increased timeout from 30s to 60s for all LLM calls
+    - Temporarily disabled caching for debugging purposes
+    - Added detailed model ID logging across all LLM factory functions
+    - Created comprehensive health monitoring system (PipelineHealthCheck class)
+    - Implemented real-time progress tracking and error pattern analysis
+    - Added health score calculation (0-100) with stalled pipeline detection
+    - Enhanced chain traces with model verification and performance metrics
 - **Quality Metrics**: 79% content success rate with proper filtering of failed content
-- **Documentation**: Comprehensive quality reports and implementation analysis
-- **Deployment**: All changes committed and pushed to GitHub, production-ready status
+- **Observability**: Real-time health monitoring, detailed progress tracking, error pattern analysis
+- **Documentation**: Comprehensive quality reports, implementation analysis, and debugging guides
+- **Deployment**: All changes committed and pushed to GitHub, production-ready status with enhanced debugging
+**Status**: ✅ Complete
+
+### 2025-01-21: Pipeline Feature Toggles Implementation
+**Decision**: Implement configurable toggles to enable/disable QA review and audio generation
+**Rationale**: Provide flexibility for different use cases (ebook-only, development testing, cost optimization)
+**Impact**:
+- **Feature Toggles**: Added `ENABLE_QA_REVIEW` and `ENABLE_AUDIO` environment variables
+- **Dynamic Graph Building**: Modified `build_graph()` to conditionally add nodes based on configuration
+- **Pipeline Configurations**:
+  - Full pipeline (QA + Audio enabled): 12 nodes - Production-ready with all features
+  - Skip QA (Audio only): 10 nodes - Faster processing, trust rewrite quality
+  - Skip Audio (QA only): 8 nodes - Ebook-only production
+  - Minimal (Both disabled): 6 nodes - Fastest for development and testing
+- **Graph Routing**:
+  - When QA disabled: `rewrite` → `metadata` (skips `qa_text` and `remediate`)
+  - When Audio disabled: `epub` → END (skips `tts`, `master`, `qa_audio`, `package`)
+- **Use Cases**:
+  - Development testing: Disable both for fastest iteration
+  - Ebook-only production: Disable audio to save TTS costs
+  - Trusted content: Disable QA when confident in rewrite quality
+  - Cost optimization: Selective feature usage based on budget
+- **Supporting Files Created**:
+  - `src/lily_books/utils/debug_logger.py` - Debug logging utilities with function decorators
+  - `src/lily_books/utils/fail_fast.py` - Fail-fast validation with feature flag
+  - `src/lily_books/utils/langfuse_tracer.py` - Langfuse integration helpers
+- **Configuration Files**:
+  - Updated `env.example` with new toggle variables and documentation
+  - Updated `src/lily_books/config.py` with `enable_qa_review` and `enable_audio` settings
+  - Updated `README.md` with comprehensive feature toggle documentation
+- **Testing**: All 4 configuration scenarios validated successfully
+- **Documentation**: Added "Pipeline Feature Toggles" section to README with examples
+**Files**: `src/lily_books/graph.py`, `src/lily_books/config.py`, `env.example`, `README.md`
 **Status**: ✅ Complete
 
 ## Contact Information
@@ -461,6 +503,6 @@ LANGFUSE_HOST=https://cloud.langfuse.com
 
 ---
 
-*Last Updated: 2025-01-20*
-*Version: 1.2.0*
-*Status: Production Ready with Publishing Pipeline*
+*Last Updated: 2025-01-21*
+*Version: 1.3.0*
+*Status: Production Ready with Configurable Pipeline Features*

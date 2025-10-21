@@ -18,11 +18,12 @@ class Settings(BaseSettings):
     openai_api_key: str
     openrouter_api_key: str
     elevenlabs_api_key: str
+    ideogram_api_key: str  # For AI cover generation
     
-    # Model configurations
-    # GPT-5 Mini: https://platform.openai.com/docs/models/gpt-5-mini
-    openai_model: str = "gpt-5-mini"
-    openai_fallback_model: str = "gpt-4o-mini"
+    # Model configurations - OpenRouter only
+    # GPT-4o-mini and Claude 4.5 Haiku via OpenRouter: https://openrouter.ai/models
+    openai_model: str = "openai/gpt-4o-mini"
+    openai_fallback_model: str = "openai/gpt-4o-mini"
     anthropic_model: str = "anthropic/claude-haiku-4.5"
     anthropic_fallback_model: str = "anthropic/claude-sonnet-4.5"
     elevenlabs_voice_id: str = "EXAVITQu4vr4xnSDxMaL"  # Sarah
@@ -33,7 +34,7 @@ class Settings(BaseSettings):
     
     # Retry settings
     llm_max_retries: int = 3
-    llm_retry_max_wait: int = 60
+    llm_retry_max_wait: int = 120  # Increased from 60 to 120 seconds
     
     # LLM-driven validation settings
     llm_validation_mode: str = "trust"  # "strict", "hybrid", "trust"
@@ -60,16 +61,20 @@ class Settings(BaseSettings):
     cache_type: str = "memory"  # "memory" or "redis"
     redis_url: str = "redis://localhost:6379"
     
-    # Langfuse settings
+    # Langfuse observability settings
     langfuse_enabled: bool = True
-    langfuse_public_key: str = ""
-    langfuse_secret_key: str = ""
+    langfuse_public_key: str
+    langfuse_secret_key: str
     langfuse_host: str = "https://cloud.langfuse.com"
     
     # Publishing options
     use_ai_covers: bool = False  # Set to True to use DALL-E
     publisher_name: str = "Modernized Classics Press"
     publisher_url: str = ""
+
+    # Pipeline feature toggles
+    enable_qa_review: bool = True  # Enable/disable QA text validation
+    enable_audio: bool = True  # Enable/disable audio generation
     
     model_config = {
         "env_file": ".env",

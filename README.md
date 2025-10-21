@@ -8,28 +8,60 @@ Lily Books converts 19th-century public-domain texts into modern English suitabl
 
 ## Features
 
-- **Text Modernization**: GPT-4o powered modernization with fidelity preservation
-- **Quality Assurance**: Claude Sonnet 4.5 validation with local checks for quotes, emphasis, and readability
+- **Text Modernization**: GPT-4o-mini powered modernization with fidelity preservation via OpenRouter
+- **Quality Assurance**: Claude 4.5 Haiku validation with comprehensive quality checks
 - **EPUB Generation**: Professional ebook creation with proper formatting and navigation
 - **Audiobook Creation**: ElevenLabs TTS with ACX-compliant mastering
-- **Human-in-the-Loop**: API endpoints for manual review and corrections
-- **Cost Tracking**: Token usage monitoring and cost estimation
-- **LangChain Best Practices**: Production-ready implementation with structured outputs, caching, fallback models, and advanced retry logic
+- **Langfuse Observability**: Complete tracing, cost tracking, and performance monitoring
+- **Debug Integration**: Trace IDs in logs, clickable trace URLs in errors
+- **OpenRouter Architecture**: Single API for all LLM operations with unified billing
+- **Production-Ready**: Structured outputs, caching, fallback models, and self-healing retry logic
 
 ## Architecture
 
 The pipeline uses LangGraph to orchestrate the following steps:
 
-1. **Ingest**: Load text from Gutendex API
-2. **Chapterize**: Split text into chapters using regex patterns
-3. **Rewrite**: Modernize paragraphs using GPT-4o with batching
-4. **QA Text**: Validate modernization using Claude Sonnet 4.5 + local checks
-5. **Remediate**: Retry failed paragraphs with targeted prompts
-6. **EPUB Build**: Generate professional ebook with ebooklib
-7. **TTS**: Synthesize audio using ElevenLabs API
-8. **Master**: Apply ACX-compliant audio mastering
-9. **QA Audio**: Validate audio metrics and compliance
-10. **Package**: Create final deliverables and retail samples
+1. **Ingest**: Load text from Project Gutenberg via Gutendex API
+2. **Chapterize**: Split text into chapters with smart detection
+3. **Rewrite**: Modernize text using GPT-4o-mini (via OpenRouter) with parallel batching
+4. **QA Text**: Validate quality using Claude 4.5 Haiku (via OpenRouter) with comprehensive checks *(optional, configurable)*
+5. **Remediate**: Retry failed chapters with enhanced prompts *(optional, configurable)*
+6. **Metadata**: Generate publishing metadata and descriptions
+7. **Cover**: Generate book cover (AI or template)
+8. **EPUB**: Build professional ebook with ebooklib
+9. **TTS**: Synthesize audio using ElevenLabs API *(optional, configurable)*
+10. **Master**: Apply ACX-compliant audio mastering *(optional, configurable)*
+11. **QA Audio**: Validate audio metrics and compliance *(optional, configurable)*
+12. **Package**: Create final deliverables and retail samples *(optional, configurable)*
+
+### Pipeline Feature Toggles
+
+The pipeline can be customized by enabling or disabling optional features via environment variables:
+
+**QA Review (`ENABLE_QA_REVIEW`)**
+- When `true` (default): Runs QA text validation and remediation steps
+- When `false`: Skips QA validation and remediation, proceeding directly from rewrite to metadata generation
+- Use case: Disable for faster testing or when you trust the rewrite quality
+
+**Audio Generation (`ENABLE_AUDIO`)**
+- When `true` (default): Runs full audio pipeline (TTS, mastering, QA audio, packaging)
+- When `false`: Skips all audio steps, pipeline ends after EPUB generation
+- Use case: Disable for ebook-only production or to save on TTS costs during development
+
+**Example Configurations:**
+```bash
+# Ebook only, no QA (fastest)
+ENABLE_QA_REVIEW=false
+ENABLE_AUDIO=false
+
+# Ebook + Audio, skip QA
+ENABLE_QA_REVIEW=false
+ENABLE_AUDIO=true
+
+# Full production pipeline (default)
+ENABLE_QA_REVIEW=true
+ENABLE_AUDIO=true
+```
 
 ## Installation
 
@@ -55,30 +87,13 @@ poetry install
 3. Configure environment:
 ```bash
 cp env.example .env
-# Edit .env with your API keys
+# Edit .env with your API keys:
+# - OPENROUTER_API_KEY (for GPT-4o-mini and Claude 4.5 Haiku)
+# - ELEVENLABS_API_KEY (for text-to-speech)
+# - LANGFUSE_PUBLIC_KEY and LANGFUSE_SECRET_KEY (for observability)
 ```
 
-4. Test API credentials:
-```bash
-# Test OpenAI
-curl -H "Authorization: Bearer $OPENAI_API_KEY" \
-     -H "Content-Type: application/json" \
-     -d '{"model": "gpt-3.5-turbo", "messages": [{"role": "user", "content": "Hello"}], "max_tokens": 5}' \
-     https://api.openai.com/v1/chat/completions
-
-# Test Anthropic
-curl -H "x-api-key: $ANTHROPIC_API_KEY" \
-     -H "Content-Type: application/json" \
-     -H "anthropic-version: 2023-06-01" \
-     -d '{"model": "claude-haiku-4-5-20251001", "max_tokens": 5, "messages": [{"role": "user", "content": "Hello"}]}' \
-     https://api.anthropic.com/v1/messages
-
-# Test ElevenLabs
-curl -H "xi-api-key: $ELEVENLABS_API_KEY" \
-     https://api.elevenlabs.io/v1/voices
-```
-
-5. Activate the environment:
+4. Test setup:
 ```bash
 poetry shell
 ```
@@ -87,37 +102,42 @@ poetry shell
 
 Create a `.env` file with the following variables:
 
-```env
+```bash
 # API Keys
-OPENAI_API_KEY=your_openai_api_key_here
-ANTHROPIC_API_KEY=your_anthropic_api_key_here
-ELEVENLABS_API_KEY=your_elevenlabs_api_key_here
+OPENROUTER_API_KEY=your_openrouter_api_key_here  # For all LLM operations
+ELEVENLABS_API_KEY=your_elevenlabs_api_key_here  # For text-to-speech
 
-# Model configurations
-OPENAI_MODEL=gpt-4o
-ANTHROPIC_MODEL=claude-sonnet-4-5-20250929
-ELEVENLABS_VOICE_ID=2EiwWnXFnvU5JabPnv8n  # Clyde voice (Rachel not available)
+# Optional: OpenAI API key (not used, OpenRouter only)
+OPENAI_API_KEY=not_used_but_required_by_langchain
 
-# Fallback models for resilience
-OPENAI_FALLBACK_MODEL=gpt-4o-mini
-ANTHROPIC_FALLBACK_MODEL=claude-haiku-4-5-20251001
+# Model configurations (OpenRouter format)
+OPENAI_MODEL=openai/gpt-4o-mini
+OPENAI_FALLBACK_MODEL=openai/gpt-4o-mini
+ANTHROPIC_MODEL=anthropic/claude-haiku-4.5
+ANTHROPIC_FALLBACK_MODEL=anthropic/claude-sonnet-4.5
+ELEVENLABS_VOICE_ID=Sarah
+
+# Langfuse Observability (recommended for production)
+LANGFUSE_ENABLED=true
+LANGFUSE_PUBLIC_KEY=pk-lf-your-key-here
+LANGFUSE_SECRET_KEY=sk-lf-your-key-here
+LANGFUSE_HOST=https://cloud.langfuse.com
 
 # Caching settings
 CACHE_ENABLED=true
 CACHE_TTL_SECONDS=3600
 CACHE_TYPE=memory
-REDIS_URL=redis://localhost:6379
-
-# Langfuse observability (optional)
-LANGFUSE_ENABLED=true
-LANGFUSE_PUBLIC_KEY=your_langfuse_public_key_here
-LANGFUSE_SECRET_KEY=your_langfuse_secret_key_here
-LANGFUSE_HOST=https://cloud.langfuse.com
 
 # Development settings
 DEBUG=false
 LOG_LEVEL=INFO
+
+# Pipeline Feature Toggles
+ENABLE_QA_REVIEW=true  # Enable/disable QA text validation
+ENABLE_AUDIO=true  # Enable/disable audio generation
 ```
+
+**See `env.example` for complete configuration options.**
 
 ## Usage
 
@@ -125,22 +145,39 @@ LOG_LEVEL=INFO
 
 Run the complete pipeline:
 
-```python
-from src.lily_books.runner import run_pipeline
+```bash
+# Single chapter (for testing)
+python3 -m lily_books run 11 --slug alice-test --chapters 1
 
-result = run_pipeline("pride-prejudice", 1342)  # Gutendex book ID
-print(f"Pipeline completed: {result['success']}")
+# Multiple chapters
+python3 -m lily_books run 11 --slug alice-sample --chapters 1,2,3
+
+# Full book
+python3 -m lily_books run 11 --slug alice-wonderland
+
+# Check status
+python3 -m lily_books status alice-wonderland
 ```
 
-### API Server
+### Python API
 
-Start the FastAPI server:
+```python
+from lily_books.runner import run_pipeline
+
+result = run_pipeline("alice-wonderland", book_id=11, chapters=[1, 2, 3])
+print(f"Success: {result['success']}")
+print(f"EPUB: {result['deliverables']['epub_path']}")
+```
+
+### FastAPI Server
+
+Start the API server for human-in-the-loop review:
 
 ```bash
-poetry run python -m src.lily_books.api.main
+poetry run python -m lily_books api
 ```
 
-The API will be available at `http://localhost:8000` with interactive docs at `http://localhost:8000/docs`.
+Server available at `http://localhost:8000` with docs at `http://localhost:8000/docs`.
 
 ### API Endpoints
 
@@ -213,7 +250,7 @@ The pipeline implements comprehensive LangChain best practices for production re
 ### ✅ **Fallback Model Configuration**
 - `RunnableWithFallbacks` pattern for resilience
 - GPT-4o → GPT-4o-mini fallback
-- Claude Sonnet 4.5 → Claude Haiku 4.5 fallback
+- Claude 4.5 Sonnet → Claude 4.5 Haiku fallback
 - Continues processing if primary model fails
 
 ### ✅ **Output Validation Layer**
@@ -245,7 +282,7 @@ The pipeline implements comprehensive LangChain best practices for production re
 Approximate costs per 1,000 words:
 
 - **Modernization**: $0.50-2.00 (GPT-4o) → $0.25-1.00 with caching
-- **QA Validation**: $0.15-0.75 (Claude Sonnet 4.5) → $0.08-0.38 with caching
+- **QA Validation**: $0.15-0.75 (Claude 4.5 Sonnet) → $0.08-0.38 with caching
 - **TTS**: $0.016 (ElevenLabs)
 - **Total**: $0.67-2.77 per 1,000 words → $0.35-1.40 with optimizations
 
@@ -295,29 +332,58 @@ poetry run ruff check src/ tests/
 
 This project is licensed under the MIT License - see the LICENSE file for details.
 
+## Langfuse Observability
+
+The pipeline includes **comprehensive Langfuse tracing** for production monitoring:
+
+### What Gets Tracked
+- ✅ **All LLM calls** - Every interaction with OpenRouter models
+- ✅ **Token usage** - Prompt, completion, and total tokens
+- ✅ **Costs** - Automatic cost calculation per model
+- ✅ **Latencies** - Time spent in each operation
+- ✅ **Errors** - Full context with clickable trace URLs
+- ✅ **Quality metrics** - Fidelity scores, readability grades
+- ✅ **Debug events** - Step-by-step pipeline execution
+
+### Viewing Traces
+1. Go to https://cloud.langfuse.com (or https://us.cloud.langfuse.com)
+2. View Traces tab
+3. Filter by book slug
+4. Click into any trace for detailed timeline
+
+### Trace URLs in Logs
+Every pipeline run logs a clickable trace URL:
+```
+TRACE_LINK pipeline_sync_alice-wonderland: https://cloud.langfuse.com/trace/abc123...
+```
+
+**See [`docs/implementation/LANGFUSE_IMPLEMENTATION.md`](docs/implementation/LANGFUSE_IMPLEMENTATION.md) for setup guide.**
+
 ## Troubleshooting
 
 ### API Credential Issues
 
 If you encounter API errors, verify your credentials:
 
-1. **OpenAI**: Check API key format (`sk-proj-...` or `sk-...`)
-2. **Anthropic**: Ensure API key starts with `sk-ant-`
+1. **OpenRouter**: Get API key from https://openrouter.ai/keys
+2. **Langfuse**: Get keys from https://cloud.langfuse.com
 3. **ElevenLabs**: Verify API key format and subscription status
-
-### Voice Configuration
-
-The default voice ID `2EiwWnXFnvU5JabPnv8n` (Clyde) is tested and working. To use a different voice:
-
-1. List available voices: `curl -H "xi-api-key: $ELEVENLABS_API_KEY" https://api.elevenlabs.io/v1/voices`
-2. Update `ELEVENLABS_VOICE_ID` in your `.env` file
-3. Test the voice: `curl -H "xi-api-key: $ELEVENLABS_API_KEY" https://api.elevenlabs.io/v1/voices/{VOICE_ID}`
 
 ### Common Issues
 
-- **ElevenLabs "voice_not_found"**: Voice ID doesn't exist in your account
-- **OpenAI rate limits**: Check usage dashboard for quota status
-- **Anthropic errors**: Verify model availability and API key permissions
+- **OpenRouter authentication failed**: Check API key is valid
+- **Langfuse not connecting**: Verify public/secret keys match exactly
+- **Empty LLM responses**: Check Langfuse trace URL in error message for details
+- **Chapter processing timeout**: Check Langfuse for latency analysis
+
+### Debugging with Langfuse
+
+When errors occur:
+1. Look for trace URL in error message
+2. Click URL to open in Langfuse dashboard
+3. View exact inputs that caused failure
+4. Check token usage and timing
+5. Review debug events leading to error
 
 ## Acknowledgments
 
@@ -346,26 +412,25 @@ The default voice ID `2EiwWnXFnvU5JabPnv8n` (Clyde) is tested and working. To us
 ## Roadmap
 
 ### ✅ **Completed (v1.0)**
-- [x] LangChain best practices implementation
+- [x] OpenRouter-only architecture (unified LLM API)
+- [x] Langfuse observability integration (100% coverage)
+- [x] Debug integration with trace URLs
 - [x] Structured outputs with Pydantic schemas
 - [x] LLM response caching for cost optimization
 - [x] Fallback model configuration
-- [x] Advanced retry logic with tenacity
+- [x] Self-healing retry logic with circuit breakers
 - [x] Skip completed chapters on resume
-- [x] Comprehensive test suite
+- [x] Comprehensive error tracking
 
-### 🔄 **In Progress**
-- [ ] Performance optimization and benchmarking
-- [ ] Enhanced error recovery strategies
-- [ ] Advanced monitoring dashboards
+### 🔄 **In Progress (v1.1)**
+- [ ] Advanced cost analytics and dashboards
+- [ ] Multi-chapter parallel optimization
+- [ ] A/B testing framework for prompts
 
-### 📋 **Planned (v1.1+)**
+### 📋 **Planned (v2.0+)**
 - [ ] Self-hosted TTS options
 - [ ] Multi-language support
-- [ ] Advanced remediation strategies
-- [ ] Batch processing capabilities
 - [ ] Web dashboard for HITL review
 - [ ] Integration with publishing platforms
 - [ ] Kubernetes deployment guides
-- [ ] Advanced cost analytics
 
