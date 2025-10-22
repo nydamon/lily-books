@@ -1,10 +1,11 @@
-"""Cover image validation using Claude vision API."""
+"""Cover image validation using Claude vision API via OpenRouter."""
 
 import logging
 import base64
 from pathlib import Path
 from typing import Dict, List
-from anthropic import Anthropic
+import requests
+import json
 
 logger = logging.getLogger(__name__)
 
@@ -37,15 +38,14 @@ def validate_cover_image(
     """
     import os
 
-    # Get Anthropic API key from environment
-    # Note: This uses direct Anthropic API, not OpenRouter
-    anthropic_api_key = os.getenv('ANTHROPIC_API_KEY')
-    if not anthropic_api_key:
-        logger.warning("No ANTHROPIC_API_KEY found - skipping cover validation")
+    # Use OpenRouter for Claude API access (not direct Anthropic)
+    openrouter_api_key = os.getenv('OPENROUTER_API_KEY')
+    if not openrouter_api_key:
+        logger.warning("No OPENROUTER_API_KEY found - skipping cover validation")
         return {
             "is_valid": True,
             "errors": [],
-            "warnings": ["Validation skipped - no Anthropic API key configured"],
+            "warnings": ["Validation skipped - no OpenRouter API key configured"],
             "should_retry": False,
             "reasoning": "Validation disabled"
         }
@@ -53,9 +53,6 @@ def validate_cover_image(
     # Read image and encode as base64
     with open(cover_path, "rb") as f:
         image_data = base64.standard_b64encode(f.read()).decode("utf-8")
-
-    # Create Anthropic client
-    client = Anthropic(api_key=anthropic_api_key)
 
     # Build validation prompt
     prompt = f"""You are validating a book cover image for quality control. Analyze this cover carefully.
@@ -100,41 +97,67 @@ If there are text rendering errors (duplicates, gibberish, missing required text
 Be strict - covers must be retail-quality with perfect text rendering."""
 
     try:
-        # Call Claude with vision
-        response = client.messages.create(
-            model="claude-3-5-sonnet-20241022",
-            max_tokens=1000,
-            messages=[{
-                "role": "user",
-                "content": [
-                    {
-                        "type": "image",
-                        "source": {
-                            "type": "base64",
-                            "media_type": "image/png",
-                            "data": image_data
+        # Call Claude 4.5 Haiku with vision via OpenRouter
+        response = requests.post(
+            "https://openrouter.ai/api/v1/chat/completions",
+            headers={
+                "Authorization": f"Bearer {openrouter_api_key}",
+                "Content-Type": "application/json"
+            },
+            json={
+                "model": "anthropic/claude-3.5-haiku",  # OpenRouter model name
+                "messages": [{
+                    "role": "user",
+                    "content": [
+                        {
+                            "type": "image_url",
+                            "image_url": {
+                                "url": f"data:image/png;base64,{image_data}"
+                            }
+                        },
+                        {
+                            "type": "text",
+                            "text": prompt
                         }
-                    },
-                    {
-                        "type": "text",
-                        "text": prompt
-                    }
-                ]
-            }]
+                    ]
+                }],
+                "max_tokens": 1000
+            },
+            timeout=30
         )
 
-        # Parse response
-        import json
-        response_text = response.content[0].text
+        response.raise_for_status()
+        result = response.json()
 
-        # Extract JSON from response (may be wrapped in markdown)
-        if "```json" in response_text:
-            json_str = response_text.split("```json")[1].split("```")[0].strip()
-        elif "```" in response_text:
-            json_str = response_text.split("```")[1].split("```")[0].strip()
-        else:
-            json_str = response_text.strip()
+        response_text = result['choices'][0]['message']['content']
 
+        # Extract JSON from response (may be wrapped in markdown or have extra content)
+        # Strip markdown code blocks
+        cleaned_text = response_text
+        if "```json" in cleaned_text:
+            cleaned_text = cleaned_text.split("```json")[1].split("```")[0].strip()
+        elif "```" in cleaned_text:
+            cleaned_text = cleaned_text.split("```")[1].split("```")[0].strip()
+
+        # Find the JSON object - it starts with { and ends with }
+        # This handles cases where LLM adds commentary before or after the JSON
+        start_idx = cleaned_text.find('{')
+        if start_idx == -1:
+            raise ValueError("No JSON object found in response")
+
+        # Find the matching closing brace
+        brace_count = 0
+        end_idx = start_idx
+        for i in range(start_idx, len(cleaned_text)):
+            if cleaned_text[i] == '{':
+                brace_count += 1
+            elif cleaned_text[i] == '}':
+                brace_count -= 1
+                if brace_count == 0:
+                    end_idx = i + 1
+                    break
+
+        json_str = cleaned_text[start_idx:end_idx]
         validation_result = json.loads(json_str)
 
         logger.info(f"Cover validation result: valid={validation_result.get('is_valid')}, "

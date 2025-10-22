@@ -17,11 +17,6 @@ MODEL_CONTEXT_WINDOWS = {
     "gpt-4-turbo": 128000,
     "anthropic/claude-sonnet-4.5": 1000000,
     "anthropic/claude-haiku-4.5": 200000,
-    "anthropic/claude-haiku-4.5": 200000,
-    "anthropic/claude-sonnet-4.5": 200000,
-    "claude-3-opus": 200000,
-    "claude-3-sonnet": 200000,
-    "claude-3-haiku": 200000,
 }
 
 # Model encoding mappings
@@ -32,11 +27,6 @@ MODEL_ENCODINGS = {
     "gpt-4-turbo": "cl100k_base",
     "anthropic/claude-sonnet-4.5": "cl100k_base",  # Claude uses same encoding
     "anthropic/claude-haiku-4.5": "cl100k_base",
-    "anthropic/claude-haiku-4.5": "cl100k_base",
-    "anthropic/claude-sonnet-4.5": "cl100k_base",
-    "claude-3-opus": "cl100k_base",
-    "claude-3-sonnet": "cl100k_base",
-    "claude-3-haiku": "cl100k_base",
 }
 
 

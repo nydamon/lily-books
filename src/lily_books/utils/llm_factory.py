@@ -242,7 +242,7 @@ def get_model_info(provider: str) -> dict:
         }
     if provider == "anthropic":
         primary = settings.anthropic_model
-        fallback_display = "claude-3-haiku"
+        fallback_display = settings.anthropic_fallback_model
 
         return {
             "primary": primary,

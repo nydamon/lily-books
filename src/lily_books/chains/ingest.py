@@ -157,8 +157,19 @@ def load_gutendex(book_id: int) -> str:
 
 def chapterize(text: str) -> List[ChapterSplit]:
     """Split text into chapters using regex patterns with LLM fallback."""
+    # Normalize line endings (handle both \r\n and \n)
+    text = text.replace('\r\n', '\n')
+
     # Try to split on CHAPTER patterns first
+    # Pattern 1: "CHAPTER" followed by number/Roman numeral: "CHAPTER I", "CHAPTER 1", etc.
     parts = re.split(r"\n\s*CHAPTER\s+([0-9IVXLC]+)(?:[^\n]*)?\s*\n", text, flags=re.I)
+
+    # Pattern 2: Standalone valid Roman numerals on their own line (for books like Great Gatsby)
+    # Only match valid chapter Roman numerals I-XX (1-20), not random letter sequences
+    if len(parts) <= 1:
+        # Match valid Roman numerals: I, II, III, IV, V, VI, VII, VIII, IX, X, XI, XII, etc.
+        # Requires blank line before and after to avoid matching mid-sentence
+        parts = re.split(r"\n\s*\n\s*(I|II|III|IV|V|VI|VII|VIII|IX|X|XI|XII|XIII|XIV|XV|XVI|XVII|XVIII|XIX|XX)\s*\n\s*\n", text)
     
     if len(parts) <= 1:
         # No chapters found, try LLM-based detection if enabled
