@@ -19,10 +19,15 @@ class Settings(BaseSettings):
     - Logging/monitoring benchmarks
     They do NOT cause hard pipeline failures when llm_validation_mode="trust"
     """
-    
+
+    model_config = {
+        "extra": "ignore",  # Ignore extra env vars (legacy keys like OPENAI_API_KEY)
+        "env_file": ".env",
+        "env_file_encoding": "utf-8"
+    }
+
     # API Keys
-    openai_api_key: str | None = None
-    openrouter_api_key: str
+    openrouter_api_key: str  # Required: OpenRouter for all LLM access (GPT, Claude)
     fish_api_key: str | None = None
     ideogram_api_key: str | None = None  # Required for Ideogram cover generation
 
@@ -89,11 +94,6 @@ class Settings(BaseSettings):
     # Pipeline feature toggles
     enable_qa_review: bool = True  # Enable/disable QA text validation
     enable_audio: bool = False  # Enable/disable audio generation
-    
-    model_config = {
-        "env_file": ".env",
-        "env_file_encoding": "utf-8"
-    }
 
 
 def get_project_paths(slug: str) -> dict[str, Path]:
