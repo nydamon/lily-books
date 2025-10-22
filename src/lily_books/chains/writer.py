@@ -5,7 +5,7 @@ import logging
 from typing import List, Callable, Optional
 from langchain_openai import ChatOpenAI
 from langchain_core.prompts import PromptTemplate
-from langchain_core.output_parsers import PydanticOutputParser
+from langchain_core.output_parsers import PydanticOutputParser, BaseOutputParser
 
 from ..models import ChapterSplit, ChapterDoc, ParaPair, WriterOutput
 from ..config import settings
@@ -42,8 +42,22 @@ def clean_modernized_text(text: str) -> str:
     return cleaned.strip()
 
 
+def strip_markdown_code_blocks(text: str) -> str:
+    """Remove markdown code blocks from LLM output.
+
+    Some LLMs wrap JSON in ```json ... ``` blocks which breaks parsing.
+    This function strips those markers.
+    """
+    # Remove ```json at start and ``` at end
+    cleaned = re.sub(r'^\s*```json\s*', '', text, flags=re.MULTILINE)
+    cleaned = re.sub(r'\s*```\s*$', '', cleaned, flags=re.MULTILINE)
+    return cleaned.strip()
+
+
 # Ultra-simplified LangChain system prompt for literary modernization (GPT-5-mini compatible)
-WRITER_SYSTEM = """Modernize classic text to contemporary English while preserving meaning, dialogue, and structure. Convert _italics_ to <em>italics</em>. Target grade level 7-9. Never add modern concepts."""
+WRITER_SYSTEM = """Modernize classic text to contemporary English while preserving meaning, dialogue, and structure. Convert _italics_ to <em>italics</em>. Target grade level 7-9. Never add modern concepts.
+
+IMPORTANT: Return ONLY raw JSON without markdown code blocks. Do NOT wrap your response in ```json ... ```"""
 
 WRITER_USER = """Modernize this text to contemporary English:
 
@@ -107,10 +121,19 @@ def _build_writer_chain(trace_name: Optional[str] = None):
 
     writer_llm = create_llm_with_fallback(**kwargs)
 
+    # Create a function to strip markdown from LLM output before parsing
+    def clean_llm_output(llm_response):
+        """Strip markdown code blocks from LLM response."""
+        # Get the content from the LLM response
+        content = llm_response.content if hasattr(llm_response, 'content') else str(llm_response)
+        # Strip markdown and return for parsing
+        return strip_markdown_code_blocks(content)
+
     chain = (
         {"joined": lambda d: d["joined"], "format_instructions": lambda d: get_format_instructions_for_model()}
         | writer_prompt
         | writer_llm
+        | clean_llm_output
         | writer_parser
     )
 

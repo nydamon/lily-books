@@ -7,7 +7,7 @@ import re
 logger = logging.getLogger(__name__)
 from typing import Dict, Tuple, List, Callable, Optional, Any
 from langchain_core.prompts import PromptTemplate
-from langchain_core.output_parsers import PydanticOutputParser
+from langchain_core.output_parsers import PydanticOutputParser, BaseOutputParser
 import textstat
 from pydantic import ValidationError
 
@@ -34,6 +34,18 @@ from ..utils.retry import analyze_failure_and_enhance_prompt
 logger = logging.getLogger(__name__)
 
 checker_chain = None
+
+
+def strip_markdown_code_blocks(text: str) -> str:
+    """Remove markdown code blocks from LLM output.
+
+    Some LLMs wrap JSON in ```json ... ``` blocks which breaks parsing.
+    This function strips those markers.
+    """
+    # Remove ```json at start and ``` at end
+    cleaned = re.sub(r'^\s*```json\s*', '', text, flags=re.MULTILINE)
+    cleaned = re.sub(r'\s*```\s*$', '', cleaned, flags=re.MULTILINE)
+    return cleaned.strip()
 
 
 def _build_checker_chain(trace_name: Optional[str] = None):
@@ -67,10 +79,19 @@ def _build_checker_chain(trace_name: Optional[str] = None):
 
     checker_llm = create_llm_with_fallback(**kwargs)
 
+    # Create a function to strip markdown from LLM output before parsing
+    def clean_llm_output(llm_response):
+        """Strip markdown code blocks from LLM response."""
+        # Get the content from the LLM response
+        content = llm_response.content if hasattr(llm_response, 'content') else str(llm_response)
+        # Strip markdown and return for parsing
+        return strip_markdown_code_blocks(content)
+
     chain = (
         {"original": lambda d: d["orig"], "modern": lambda d: d["modern"], "format_instructions": lambda d: checker_parser.get_format_instructions()}
         | checker_prompt
         | checker_llm
+        | clean_llm_output
         | checker_parser
     )
 

@@ -13,6 +13,18 @@ from ..config import settings
 logger = logging.getLogger(__name__)
 
 
+def strip_markdown_code_blocks(text: str) -> str:
+    """Remove markdown code blocks from LLM output.
+
+    Some LLMs wrap JSON in ```json ... ``` blocks which breaks parsing.
+    This function strips those markers.
+    """
+    # Remove ```json at start and ``` at end
+    cleaned = re.sub(r'^\s*```json\s*', '', text, flags=re.MULTILINE)
+    cleaned = re.sub(r'\s*```\s*$', '', cleaned, flags=re.MULTILINE)
+    return cleaned.strip()
+
+
 def clean_gutenberg_content(text: str) -> str:
     """
     Remove Project Gutenberg boilerplate and illustration placeholders.
@@ -228,7 +240,9 @@ def llm_detect_chapters(text: str) -> Optional[List[ChapterSplit]]:
         # Try to parse the response
         import json
         try:
-            chapters_data = json.loads(response.content)
+            # Strip markdown code blocks before parsing
+            cleaned_content = strip_markdown_code_blocks(response.content)
+            chapters_data = json.loads(cleaned_content)
             chapters = []
             
             for i, ch_data in enumerate(chapters_data):
