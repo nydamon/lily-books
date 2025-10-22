@@ -6,35 +6,49 @@ from pydantic_settings import BaseSettings
 
 class Settings(BaseSettings):
     """Application settings loaded from environment variables.
-    
-    Philosophy: Trust LLM judgment over deterministic rules.
-    - llm_validation_mode="trust": Remove all quality threshold enforcement
-    - self_healing_enabled=True: Retry with enhanced prompts instead of failing
-    - llm_quality_advisor_enabled=True: Use LLM to review its own outputs
-    - use_llm_for_structure=True: Let LLM handle chapter detection, chunking
+
+    LLM-Driven Pipeline Philosophy:
+    - llm_validation_mode="trust": Use quality thresholds as targets, not hard failures
+    - self_healing_enabled=True: Retry with enhanced prompts instead of immediate failure
+    - llm_quality_advisor_enabled=True: Use LLM to review and improve its own outputs
+    - use_llm_for_structure=True: Let LLM handle chapter detection and text chunking
+
+    Note: Quality thresholds (qa_min_fidelity, qa_target_fidelity, etc.) serve as:
+    - Targets for optimization
+    - Triggers for remediation when self_healing_enabled=True
+    - Logging/monitoring benchmarks
+    They do NOT cause hard pipeline failures when llm_validation_mode="trust"
     """
     
     # API Keys
-    openai_api_key: str
+    openai_api_key: str | None = None
     openrouter_api_key: str
-    elevenlabs_api_key: str
-    ideogram_api_key: str  # For AI cover generation
-    
+    fish_api_key: str | None = None
+    ideogram_api_key: str | None = None  # Required for Ideogram cover generation
+
     # Model configurations - OpenRouter only
     # GPT-4o-mini and Claude 4.5 Haiku via OpenRouter: https://openrouter.ai/models
     openai_model: str = "openai/gpt-4o-mini"
     openai_fallback_model: str = "openai/gpt-4o-mini"
     anthropic_model: str = "anthropic/claude-haiku-4.5"
     anthropic_fallback_model: str = "anthropic/claude-sonnet-4.5"
-    elevenlabs_voice_id: str = "EXAVITQu4vr4xnSDxMaL"  # Sarah
+
+    # Fish Audio TTS settings
+    fish_reference_id: str = ""  # Optional: Custom voice model ID
+    use_audio_transcription: bool = True
     
     # Development settings
     debug: bool = False
+    fail_fast_enabled: bool = False
     log_level: str = "INFO"
     
     # Retry settings
     llm_max_retries: int = 3
     llm_retry_max_wait: int = 120  # Increased from 60 to 120 seconds
+
+    # Pipeline timeout settings (seconds)
+    chapter_processing_timeout: int = 300  # 5 minutes per chapter
+    qa_processing_timeout: int = 180  # 3 minutes per QA check
     
     # LLM-driven validation settings
     llm_validation_mode: str = "trust"  # "strict", "hybrid", "trust"
@@ -63,18 +77,18 @@ class Settings(BaseSettings):
     
     # Langfuse observability settings
     langfuse_enabled: bool = True
-    langfuse_public_key: str
-    langfuse_secret_key: str
+    langfuse_public_key: str | None = None
+    langfuse_secret_key: str | None = None
     langfuse_host: str = "https://cloud.langfuse.com"
     
     # Publishing options
-    use_ai_covers: bool = False  # Set to True to use DALL-E
+    use_ai_covers: bool = True  # Ideogram AI cover generation (required)
     publisher_name: str = "Modernized Classics Press"
     publisher_url: str = ""
 
     # Pipeline feature toggles
     enable_qa_review: bool = True  # Enable/disable QA text validation
-    enable_audio: bool = True  # Enable/disable audio generation
+    enable_audio: bool = False  # Enable/disable audio generation
     
     model_config = {
         "env_file": ".env",
@@ -118,6 +132,33 @@ def get_config() -> Settings:
     return settings
 
 
+def validate_audio_dependencies() -> None:
+    """Validate that Fish Audio SDK is available when audio is enabled.
+
+    Raises:
+        ImportError: If ENABLE_AUDIO=true but Fish Audio SDK is not installed
+        ValueError: If ENABLE_AUDIO=true but FISH_API_KEY is not configured
+    """
+    if not settings.enable_audio:
+        return
+
+    try:
+        from lily_books.tools.tts import Session, TTSRequest
+        if Session is None or TTSRequest is None:
+            raise ImportError()
+    except ImportError:
+        raise ImportError(
+            "Fish Audio SDK required when ENABLE_AUDIO=true. "
+            "Install with: poetry add fish-audio-sdk"
+        )
+
+    if not settings.fish_api_key:
+        raise ValueError(
+            "FISH_API_KEY required when ENABLE_AUDIO=true. "
+            "Set FISH_API_KEY in .env or disable ENABLE_AUDIO."
+        )
+
+
 def get_quality_settings(slug: str) -> dict:
     """Get quality settings with per-book overrides from book.yaml."""
     from .storage import load_book_metadata
@@ -151,4 +192,3 @@ def get_quality_settings(slug: str) -> dict:
             quality_config["failure_mode"] = qc.failure_mode
     
     return quality_config
-

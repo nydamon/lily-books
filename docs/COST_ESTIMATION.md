@@ -30,15 +30,15 @@ This document provides detailed cost analysis for the Lily Books modernization p
 - Output cost: 200 × $0.015 = $0.003
 - **Total**: $0.0118 per 1,000 words
 
-### 3. Text-to-Speech (ElevenLabs)
-- **Cost**: $0.016 per 1K characters
+### 3. Text-to-Speech (Fish Audio)
+- **Cost**: Varies based on Fish Audio pricing (check https://fish.audio for current rates)
 - **Character Ratio**: ~1.2x original (modernized text)
-- **Estimated Cost**: $0.016 per 1,000 words
+- **Estimated Cost**: Contact Fish Audio for current pricing
 
 **Calculation Example**:
 - Modernized text: 1,200 words ≈ 6,000 characters
-- TTS cost: 6,000 × $0.016 = $0.096
-- **Total**: $0.096 per 1,000 words
+- TTS cost: See Fish Audio pricing
+- **Note**: Fish Audio provides high-quality S1 model TTS with competitive pricing
 
 ### 4. Audio Processing (ffmpeg)
 - **Cost**: $0 (local processing)
@@ -51,7 +51,7 @@ This document provides detailed cost analysis for the Lily Books modernization p
 |-----------|-------------------|------------|
 | Text Modernization | $0.50-2.00 | 60-75% |
 | Quality Assurance | $0.15-0.75 | 20-30% |
-| Text-to-Speech | $0.016 | 2-5% |
+| Text-to-Speech | Varies | 2-5% |
 | Audio Processing | $0 | 0% |
 | **Total** | **$0.67-2.77** | **100%** |
 

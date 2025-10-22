@@ -5,6 +5,9 @@ import json
 import logging
 from typing import Any, Optional, Dict
 from datetime import datetime, timedelta
+import sys as _sys
+
+_sys.modules.setdefault("src.lily_books.utils.cache", _sys.modules[__name__])
 
 try:
     from langchain_community.cache import InMemoryCache, RedisSemanticCache

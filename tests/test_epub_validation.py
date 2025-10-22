@@ -56,7 +56,7 @@ def test_epub_validation():
     
     with patch('src.lily_books.chains.writer.rewrite_chapter', side_effect=mock_rewrite_chapter), \
          patch('src.lily_books.chains.checker.qa_chapter', side_effect=mock_qa_chapter), \
-         patch('src.lily_books.tools.tts.tts_elevenlabs') as mock_tts, \
+         patch('src.lily_books.tools.tts.tts_fish_audio') as mock_tts, \
          patch('src.lily_books.tools.audio.master_audio') as mock_master, \
          patch('src.lily_books.tools.audio.get_audio_metrics') as mock_metrics, \
          patch('src.lily_books.chains.ingest.load_gutendex', return_value="""

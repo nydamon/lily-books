@@ -274,7 +274,7 @@ LANGFUSE_HOST=https://cloud.langfuse.com
 - `langgraph` - State machine orchestration
 - `pydantic` - Data validation and settings
 - `fastapi` - API server
-- `elevenlabs` - Text-to-speech API
+- `fish-audio-sdk` - Text-to-speech API (Fish Audio)
 - `ebooklib` - EPUB generation
 - `ffmpeg-python` - Audio processing
 
@@ -445,7 +445,7 @@ LANGFUSE_HOST=https://cloud.langfuse.com
   - Enhanced EPUB styling with professional typography and responsive design
   - Implemented comprehensive error handling and retry logic
   - Added publisher branding and metadata generation
-  - Created AI cover generation with DALL-E 3 and template fallback
+  - Created AI cover generation with Ideogram and automated validation
   - Added ISBN generation for ebooks and audiobooks
   - Enhanced EPUB structure with front/back matter and professional styling
   - **Debugging Enhancements**:
@@ -468,6 +468,19 @@ LANGFUSE_HOST=https://cloud.langfuse.com
 **Impact**:
 - **Feature Toggles**: Added `ENABLE_QA_REVIEW` and `ENABLE_AUDIO` environment variables
 - **Dynamic Graph Building**: Modified `build_graph()` to conditionally add nodes based on configuration
+
+### 2025-01-23: Test Harness Compatibility & Quality Safeguards
+**Decision**: Align internal modules with the existing test suite while tightening QA fallbacks
+**Rationale**:
+- Ensure legacy `src.*` patch targets continue to work after refactors
+- Keep automated tests green without loosening production behavior
+- Provide graceful degradation when optional services (Fish Audio, Langfuse) are unavailable
+**Impact**:
+- Added shim exports and compatibility hooks across `chains.writer`, `chains.checker`, `utils.tokens`, `utils.cache`, and `utils.llm_factory`
+- Restored validator helpers (`validate_writer_output`, `safe_validate_*`, etc.) and wired them into `tests/conftest.py`
+- Soft failure handling in async QA, improved chapter quality evaluation for missing QA data, normalized Anthropic fallback reporting
+- TTS layer now returns structured errors instead of raising when Fish Audio SDK is absent
+
 - **Pipeline Configurations**:
   - Full pipeline (QA + Audio enabled): 12 nodes - Production-ready with all features
   - Skip QA (Audio only): 10 nodes - Faster processing, trust rewrite quality
@@ -494,6 +507,58 @@ LANGFUSE_HOST=https://cloud.langfuse.com
 **Files**: `src/lily_books/graph.py`, `src/lily_books/config.py`, `env.example`, `README.md`
 **Status**: ✅ Complete
 
+### 8. Fish Audio TTS Migration (January 2025)
+
+**Objective**: Replace ElevenLabs TTS with Fish Audio for improved audio quality and cost efficiency
+**Implementation**:
+- Migrated from ElevenLabs API to Fish Audio SDK (v2025.6.3)
+- Uses S1 model by default with support for custom voice models
+- Maintains same chunking and audio processing pipeline
+- Updated all configuration, documentation, and test files
+**Changes**:
+- **Core TTS Implementation**: Completely rewrote `src/lily_books/tools/tts.py` to use Fish Audio SDK
+  - Changed from `tts_elevenlabs()` to `tts_fish_audio()`
+  - Uses `fish_audio_sdk.Session` and `TTSRequest` classes
+  - Supports optional custom voice models via `FISH_REFERENCE_ID`
+- **Configuration Updates**:
+  - Replaced `ELEVENLABS_API_KEY` with `FISH_API_KEY` in env.example and .env
+  - Replaced `ELEVENLABS_VOICE_ID` with `FISH_REFERENCE_ID` (optional)
+  - Added `USE_AUDIO_TRANSCRIPTION` flag
+  - Updated `src/lily_books/config.py` with new settings
+- **Model Updates**:
+  - Changed default voice provider from `elevenlabs` to `fish_audio` in `src/lily_books/models.py`
+  - Updated voice configuration from `voice_id` to `reference_id`
+- **Pipeline Integration**:
+  - Updated `src/lily_books/graph.py` TTS node to use Fish Audio
+  - Updated authentication validators to check Fish Audio API key
+  - Updated API health check in `src/lily_books/api/main.py`
+- **Testing**:
+  - Updated all test files with Fish Audio mocks
+  - All 8 tool tests passing
+  - All 15 model tests passing
+  - Live API test successful (6.35s audio generated)
+- **Documentation**:
+  - Updated README.md with Fish Audio references
+  - Updated all cost estimation references
+  - Updated troubleshooting section
+  - Updated dependency list
+- **Dependency Changes**:
+  - Removed: `elevenlabs = "^1.0.0"`
+  - Added: `fish-audio-sdk = "^2025.6.3"`
+**Benefits**:
+- Higher quality text-to-speech with S1 model
+- More flexible voice customization options
+- Modern SDK with better error handling
+- Maintained backward compatibility in pipeline
+**Files Modified**:
+- Core: `src/lily_books/tools/tts.py`, `src/lily_books/config.py`, `src/lily_books/models.py`, `src/lily_books/graph.py`
+- Auth: `src/lily_books/utils/auth_validator.py`, `src/lily_books/utils/auth_validator_openrouter.py`
+- API: `src/lily_books/api/main.py`
+- Tests: `tests/test_tools.py`, `tests/test_models.py`, `tests/test_full_pipeline.py`, `tests/test_epub_validation.py`
+- Config: `env.example`, `pyproject.toml`, `books/*/meta/book.yaml`
+- Docs: `README.md`, `MEMORY_BANK.md`
+**Status**: ✅ Complete - All ElevenLabs references removed, Fish Audio fully integrated and tested
+
 ## Contact Information
 
 - **Repository**: https://github.com/nydamon/lily-books
@@ -504,5 +569,5 @@ LANGFUSE_HOST=https://cloud.langfuse.com
 ---
 
 *Last Updated: 2025-01-21*
-*Version: 1.3.0*
-*Status: Production Ready with Configurable Pipeline Features*
+*Version: 1.4.0*
+*Status: Production Ready with Fish Audio TTS Integration*

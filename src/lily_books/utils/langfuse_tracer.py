@@ -1,7 +1,11 @@
 """Langfuse tracing utilities."""
 
-from typing import Optional, List
+from contextlib import contextmanager
+import logging
+from typing import Optional, List, Dict, Any, Iterator
 from langchain_core.callbacks import BaseCallbackHandler
+
+logger = logging.getLogger(__name__)
 
 try:
     from langfuse.callback import CallbackHandler as LangfuseCallbackHandler
@@ -14,7 +18,12 @@ except ImportError:
 def is_langfuse_enabled() -> bool:
     """Check if Langfuse is available and enabled."""
     from ..config import settings
-    return LANGFUSE_AVAILABLE and settings.langfuse_enabled
+    return (
+        LANGFUSE_AVAILABLE
+        and settings.langfuse_enabled
+        and bool(settings.langfuse_public_key)
+        and bool(settings.langfuse_secret_key)
+    )
 
 
 def get_langchain_callback_handler() -> Optional[LangfuseCallbackHandler]:
@@ -35,5 +44,61 @@ def get_langchain_callback_handler() -> Optional[LangfuseCallbackHandler]:
         )
         return callback
     except Exception as e:
-        print(f"Failed to create Langfuse callback: {e}")
+        logger.warning("Failed to create Langfuse callback: %s", e)
         return None
+
+
+@contextmanager
+def trace_pipeline(
+    slug: str,
+    book_id: int,
+    chapters: Optional[List[int]] = None,
+    metadata: Optional[Dict[str, Any]] = None
+) -> Iterator[Optional[Any]]:
+    """Context manager placeholder for pipeline tracing."""
+    if not is_langfuse_enabled():
+        yield None
+        return
+
+    logger.debug(
+        "Langfuse tracing not configured for pipeline slug=%s book_id=%s",
+        slug,
+        book_id,
+    )
+    yield None
+
+
+@contextmanager
+def trace_node(
+    trace: Optional[Any],
+    node_name: str,
+    slug: str,
+    metadata: Optional[Dict[str, Any]] = None
+) -> Iterator[Optional[Any]]:
+    """Context manager placeholder for node-level tracing."""
+    if not trace:
+        yield None
+        return
+
+    logger.debug(
+        "Langfuse tracing not configured for node=%s slug=%s",
+        node_name,
+        slug,
+    )
+    yield None
+
+
+def track_error(trace: Optional[Any], error: Exception, metadata: Optional[Dict[str, Any]] = None) -> None:
+    """Placeholder error tracking."""
+    if not trace:
+        return
+
+    logger.debug("Langfuse error tracking noop: %s (%s)", error, metadata)
+
+
+def flush_langfuse() -> None:
+    """Placeholder flush."""
+    if not is_langfuse_enabled():
+        return
+
+    logger.debug("Langfuse flush noop")

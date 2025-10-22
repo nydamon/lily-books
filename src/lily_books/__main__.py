@@ -4,6 +4,10 @@ import typer
 from typing import Optional
 from .runner import run_pipeline, get_pipeline_status
 from .api.main import app
+from .utils.ssl_fix import fix_ssl_certificates
+
+# Fix SSL certificates on startup
+fix_ssl_certificates()
 
 cli = typer.Typer()
 
@@ -30,8 +34,11 @@ def run(
     else:
         typer.echo(f"❌ Pipeline failed for {slug}")
         typer.echo(f"⏱️  Runtime: {result['runtime_sec']:.1f} seconds")
-        for error in result["errors"]:
-            typer.echo(f"   • {error}")
+        if "error" in result:
+            typer.echo(f"   • {result['error']}")
+        if "errors" in result:
+            for error in result["errors"]:
+                typer.echo(f"   • {error}")
 
 
 @cli.command()

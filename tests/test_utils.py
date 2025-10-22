@@ -48,7 +48,7 @@ class TestTokenCounting:
     def test_get_context_window(self):
         """Test context window retrieval."""
         gpt_window = get_context_window("gpt-4o")
-        claude_window = get_context_window("claude-3-5-sonnet-latest")
+        claude_window = get_context_window("anthropic/claude-sonnet-4.5")
         
         assert gpt_window == 128000
         assert claude_window == 200000
@@ -358,8 +358,8 @@ class TestLLMFactory:
     @patch('src.lily_books.utils.llm_factory.settings')
     def test_create_anthropic_llm_with_fallback(self, mock_settings):
         """Test Anthropic LLM factory with fallback."""
-        mock_settings.anthropic_model = "claude-3-5-sonnet-latest"
-        mock_settings.anthropic_fallback_model = "claude-3-haiku"
+        mock_settings.anthropic_model = "anthropic/claude-haiku-4.5"
+        mock_settings.anthropic_fallback_model = "anthropic/claude-sonnet-4.5"
         mock_settings.anthropic_api_key = "test-key"
         
         with patch('src.lily_books.utils.llm_factory.ChatAnthropic') as mock_chat:
@@ -383,8 +383,8 @@ class TestLLMFactory:
         """Test model info retrieval."""
         mock_settings.openai_model = "gpt-4o"
         mock_settings.openai_fallback_model = "gpt-4o-mini"
-        mock_settings.anthropic_model = "claude-3-5-sonnet-latest"
-        mock_settings.anthropic_fallback_model = "claude-3-haiku"
+        mock_settings.anthropic_model = "anthropic/claude-haiku-4.5"
+        mock_settings.anthropic_fallback_model = "anthropic/claude-sonnet-4.5"
         
         openai_info = get_model_info("openai")
         assert openai_info["primary"] == "gpt-4o"
@@ -392,7 +392,7 @@ class TestLLMFactory:
         assert openai_info["provider"] == "openai"
         
         anthropic_info = get_model_info("anthropic")
-        assert anthropic_info["primary"] == "claude-3-5-sonnet-latest"
+        assert anthropic_info["primary"] == "anthropic/claude-haiku-4.5"
         assert anthropic_info["fallback"] == "claude-3-haiku"
         assert anthropic_info["provider"] == "anthropic"
         

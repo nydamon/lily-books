@@ -23,6 +23,7 @@
 - **Implementation**: Claude Sonnet 4.5 validation with comprehensive LangChain prompts
 - **Features**: Fidelity scoring, readability validation, formatting preservation, emphasis detection
 - **Files**: `src/lily_books/chains/checker.py`, `src/lily_books/utils/validators.py`
+- **2025-01-23 Update**: Added compatibility hooks for legacy tests, improved async QA soft-fail handling, and ensured chapters without QA data pass gracefully while still logging issues
 
 #### 3. EPUB Generation
 - **Status**: ✅ Complete

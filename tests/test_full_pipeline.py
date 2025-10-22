@@ -5,7 +5,7 @@ import time
 from lily_books.chains.ingest import load_gutendex, chapterize
 from lily_books.chains.writer import rewrite_chapter
 from lily_books.chains.checker import qa_chapter
-from lily_books.tools.tts import tts_elevenlabs
+from lily_books.tools.tts import tts_fish_audio
 from lily_books.tools.audio import master_audio, get_audio_metrics
 from lily_books.tools.epub import build_epub
 from lily_books.tools.epub_validator import validate_epub_structure, get_epub_quality_report
@@ -224,7 +224,7 @@ def test_full_pipeline():
             wav_path = Path(f"books/full-test/work/audio/ch{chapter_doc.chapter:02d}.wav")
             wav_path.parent.mkdir(parents=True, exist_ok=True)
             
-            result = tts_elevenlabs(text, "EXAVITQu4vr4xnSDxMaL", wav_path)  # Sarah
+            result = tts_fish_audio(text, "", wav_path)  # Use default Fish Audio voice
             audio_files.append({
                 "chapter": chapter_doc.chapter,
                 "wav_path": str(wav_path),

@@ -53,6 +53,11 @@ class PackageError(PipelineError):
     pass
 
 
+class CoverError(PipelineError):
+    """Raised when cover generation fails."""
+    pass
+
+
 class QualityControl(BaseModel):
     """Per-book quality control overrides."""
     min_fidelity: Optional[int] = None
@@ -125,8 +130,8 @@ class BookMetadata(BaseModel):
     public_domain_source: str
     language: str = "en-US"
     voice: dict = Field(default_factory=lambda: {
-        "provider": "elevenlabs",
-        "voice_id": "Rachel",
+        "provider": "fish_audio",
+        "reference_id": "",  # Optional: Custom voice model ID from Fish Audio
         "rate": "standard"
     })
     acx: dict = Field(default_factory=lambda: {
@@ -282,11 +287,14 @@ class FlowState(TypedDict):
     paths: dict
     raw_text: str | None
     chapters: list[ChapterSplit] | None
-    rewritten: list[str] | None
+    rewritten: list[ChapterDoc] | None
     qa_text_ok: bool | None
     audio_ok: bool | None
     epub_path: Optional[str]
     epub_quality_score: Optional[int]
+    requested_chapters: Optional[list[int]]  # Chapter filter from CLI
+    audio_files: Optional[list[dict]]  # Audio files from TTS
+    mastered_files: Optional[list[dict]]  # Mastered audio files
     
     # NEW FIELDS:
     publishing_metadata: Optional[PublishingMetadata]

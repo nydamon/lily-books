@@ -11,7 +11,7 @@ Lily Books converts 19th-century public-domain texts into modern English suitabl
 - **Text Modernization**: GPT-4o-mini powered modernization with fidelity preservation via OpenRouter
 - **Quality Assurance**: Claude 4.5 Haiku validation with comprehensive quality checks
 - **EPUB Generation**: Professional ebook creation with proper formatting and navigation
-- **Audiobook Creation**: ElevenLabs TTS with ACX-compliant mastering
+- **Audiobook Creation**: Fish Audio TTS with ACX-compliant mastering
 - **Langfuse Observability**: Complete tracing, cost tracking, and performance monitoring
 - **Debug Integration**: Trace IDs in logs, clickable trace URLs in errors
 - **OpenRouter Architecture**: Single API for all LLM operations with unified billing
@@ -27,9 +27,9 @@ The pipeline uses LangGraph to orchestrate the following steps:
 4. **QA Text**: Validate quality using Claude 4.5 Haiku (via OpenRouter) with comprehensive checks *(optional, configurable)*
 5. **Remediate**: Retry failed chapters with enhanced prompts *(optional, configurable)*
 6. **Metadata**: Generate publishing metadata and descriptions
-7. **Cover**: Generate book cover (AI or template)
+7. **Cover**: Generate Ideogram AI book cover with automated validation
 8. **EPUB**: Build professional ebook with ebooklib
-9. **TTS**: Synthesize audio using ElevenLabs API *(optional, configurable)*
+9. **TTS**: Synthesize audio using Fish Audio API *(optional, configurable)*
 10. **Master**: Apply ACX-compliant audio mastering *(optional, configurable)*
 11. **QA Audio**: Validate audio metrics and compliance *(optional, configurable)*
 12. **Package**: Create final deliverables and retail samples *(optional, configurable)*
@@ -89,7 +89,8 @@ poetry install
 cp env.example .env
 # Edit .env with your API keys:
 # - OPENROUTER_API_KEY (for GPT-4o-mini and Claude 4.5 Haiku)
-# - ELEVENLABS_API_KEY (for text-to-speech)
+# - FISH_API_KEY (for text-to-speech)
+# - IDEOGRAM_API_KEY (for mandatory AI cover generation)
 # - LANGFUSE_PUBLIC_KEY and LANGFUSE_SECRET_KEY (for observability)
 ```
 
@@ -105,17 +106,21 @@ Create a `.env` file with the following variables:
 ```bash
 # API Keys
 OPENROUTER_API_KEY=your_openrouter_api_key_here  # For all LLM operations
-ELEVENLABS_API_KEY=your_elevenlabs_api_key_here  # For text-to-speech
+FISH_API_KEY=your_fish_audio_api_key_here  # For text-to-speech
+IDEOGRAM_API_KEY=your_ideogram_api_key_here  # Mandatory: Ideogram AI cover generation
 
-# Optional: OpenAI API key (not used, OpenRouter only)
-OPENAI_API_KEY=not_used_but_required_by_langchain
+# Optional: OpenAI API key (not used in current pipeline)
+OPENAI_API_KEY=
 
 # Model configurations (OpenRouter format)
 OPENAI_MODEL=openai/gpt-4o-mini
 OPENAI_FALLBACK_MODEL=openai/gpt-4o-mini
 ANTHROPIC_MODEL=anthropic/claude-haiku-4.5
 ANTHROPIC_FALLBACK_MODEL=anthropic/claude-sonnet-4.5
-ELEVENLABS_VOICE_ID=Sarah
+
+# Fish Audio TTS Settings
+FISH_REFERENCE_ID=  # Optional: Custom voice model ID from Fish Audio playground
+USE_AUDIO_TRANSCRIPTION=true  # Enable audio transcription features
 
 # Langfuse Observability (recommended for production)
 LANGFUSE_ENABLED=true
@@ -135,6 +140,7 @@ LOG_LEVEL=INFO
 # Pipeline Feature Toggles
 ENABLE_QA_REVIEW=true  # Enable/disable QA text validation
 ENABLE_AUDIO=true  # Enable/disable audio generation
+USE_AI_COVERS=true  # Required: Ideogram AI cover generation
 ```
 
 **See `env.example` for complete configuration options.**
@@ -283,7 +289,7 @@ Approximate costs per 1,000 words:
 
 - **Modernization**: $0.50-2.00 (GPT-4o) → $0.25-1.00 with caching
 - **QA Validation**: $0.15-0.75 (Claude 4.5 Sonnet) → $0.08-0.38 with caching
-- **TTS**: $0.016 (ElevenLabs)
+- **TTS**: Varies (Fish Audio - check pricing at https://fish.audio)
 - **Total**: $0.67-2.77 per 1,000 words → $0.35-1.40 with optimizations
 
 **Cost Reduction**: 30-50% savings through caching and adaptive batching
@@ -367,7 +373,7 @@ If you encounter API errors, verify your credentials:
 
 1. **OpenRouter**: Get API key from https://openrouter.ai/keys
 2. **Langfuse**: Get keys from https://cloud.langfuse.com
-3. **ElevenLabs**: Verify API key format and subscription status
+3. **Fish Audio**: Verify API key format and subscription status at https://fish.audio
 
 ### Common Issues
 
@@ -388,7 +394,7 @@ When errors occur:
 ## Acknowledgments
 
 - Built with [LangChain](https://langchain.com/) and [LangGraph](https://langchain.com/langgraph)
-- Uses [ElevenLabs](https://elevenlabs.io/) for text-to-speech
+- Uses [Fish Audio](https://fish.audio/) for text-to-speech
 - Inspired by the need for accessible classic literature
 
 ## Dependencies
@@ -398,7 +404,7 @@ When errors occur:
 - `langgraph` - State machine orchestration
 - `pydantic` - Data validation and settings
 - `fastapi` - API server
-- `elevenlabs` - Text-to-speech API
+- `fish-audio-sdk` - Text-to-speech API
 - `ebooklib` - EPUB generation
 - `ffmpeg-python` - Audio processing
 
@@ -433,4 +439,3 @@ When errors occur:
 - [ ] Web dashboard for HITL review
 - [ ] Integration with publishing platforms
 - [ ] Kubernetes deployment guides
-

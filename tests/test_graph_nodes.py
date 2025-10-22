@@ -7,7 +7,7 @@ from pathlib import Path
 from lily_books.graph import (
     rewrite_node, qa_text_node, ingest_node, chapterize_node
 )
-from lily_books.models import FlowState, ChapterSplit, ChapterDoc, ParaPair
+from lily_books.models import FlowState, ChapterSplit, ChapterDoc, ParaPair, QAReport
 from lily_books.storage import save_chapter_doc, load_chapter_doc
 import sys
 sys.path.append(str(Path(__file__).parent))
@@ -82,11 +82,11 @@ def test_qa_text_node_skip_completed_qa():
             title="Chapter 1",
             pairs=[
                 ParaPair(
-                    i=0, 
-                    para_id="ch01_para000", 
-                    orig="Original paragraph 1", 
+                    i=0,
+                    para_id="ch01_para000",
+                    orig="Original paragraph 1",
                     modern="Modernized paragraph 1",
-                    qa=MagicMock()  # QA already completed
+                    qa=QAReport()
                 )
             ]
         )

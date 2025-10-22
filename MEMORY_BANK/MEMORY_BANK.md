@@ -202,7 +202,7 @@ ELEVENLABS_API_KEY=...
 
 # Model Configuration
 OPENAI_MODEL=gpt-4o
-ANTHROPIC_MODEL=claude-3-5-sonnet-latest
+ANTHROPIC_MODEL=anthropic/claude-haiku-4.5
 ELEVENLABS_VOICE_ID=2EiwWnXFnvU5JabPnv8n
 
 # Fallback Models
@@ -229,7 +229,7 @@ LANGFUSE_HOST=https://cloud.langfuse.com
 - `langgraph` - State machine orchestration
 - `pydantic` - Data validation and settings
 - `fastapi` - API server
-- `elevenlabs` - Text-to-speech API
+- `fish-audio-sdk` - Text-to-speech API (Fish Audio)
 - `ebooklib` - EPUB generation
 - `ffmpeg-python` - Audio processing
 

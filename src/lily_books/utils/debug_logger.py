@@ -27,6 +27,17 @@ def check_for_hang():
     pass
 
 
+def set_trace_context(trace_id: str | None = None):
+    """Attach tracing identifier to debug logs (noop fallback)."""
+    if trace_id:
+        logger.debug(f"Trace context set: {trace_id}")
+
+
+def log_trace_link(label: str):
+    """Emit a debug log that links to external traces (noop fallback)."""
+    logger.debug(f"Trace link: {label}")
+
+
 def debug_function(func: Callable) -> Callable:
     """Decorator to debug synchronous functions."""
     @functools.wraps(func)

@@ -1,10 +1,7 @@
-"""Cover generation using AI or templates."""
+"""Cover generation using Ideogram AI."""
 
 import logging
-import base64
 from pathlib import Path
-from typing import Optional
-from io import BytesIO
 
 from ..models import CoverDesign, PublishingMetadata
 from ..config import get_project_paths, get_config
@@ -12,7 +9,7 @@ from ..config import get_project_paths, get_config
 logger = logging.getLogger(__name__)
 
 def generate_cover_prompt(metadata: PublishingMetadata) -> str:
-    """Generate DALL-E prompt for book cover."""
+    """Generate Ideogram prompt for book cover."""
     
     # Style mappings
     style_prompts = {
@@ -51,164 +48,161 @@ Art style: {style}"""
     return prompt
 
 
-def generate_cover_with_dalle(
+def generate_cover_with_ideogram(
     metadata: PublishingMetadata,
-    slug: str
+    slug: str,
+    max_attempts: int = 3
 ) -> Path:
-    """Generate cover using DALL-E 3."""
-    from openai import OpenAI
-    
+    """Generate cover using Ideogram API with validation and retry.
+
+    Ideogram specializes in generating images with readable text, perfect for book covers.
+    Includes automatic validation and retry if text rendering fails.
+
+    Args:
+        metadata: Publishing metadata with title, author, cover_prompt
+        slug: Book slug for file naming
+        max_attempts: Maximum number of generation attempts (default: 3)
+
+    Returns:
+        Path to validated cover image
+    """
+    import requests
+    from ..utils.cover_validator import validate_cover_image
+
     config = get_config()
-    client = OpenAI(api_key=config.openai_api_key)
-    paths = get_project_paths(slug)
-    
-    # Generate prompt
-    prompt = metadata.cover_prompt or generate_cover_prompt(metadata)
-    
-    logger.info(f"Generating cover with DALL-E 3...")
-    logger.debug(f"Prompt: {prompt}")
-    
-    try:
-        # Call DALL-E 3
-        response = client.images.generate(
-            model="dall-e-3",
-            prompt=prompt,
-            size="1024x1792",  # Closest to 1600x2400 ratio
-            quality="hd",
-            n=1
+
+    if not getattr(config, "ideogram_api_key", None):
+        raise ValueError(
+            "Ideogram API key not configured. "
+            "Set IDEOGRAM_API_KEY to enable mandatory AI cover generation."
         )
-        
-        # Download image
-        image_url = response.data[0].url
-        
-        import requests
-        img_response = requests.get(image_url)
-        img_response.raise_for_status()
-        
-        # Save to deliverables
-        cover_path = paths["deliverables_ebook"] / f"{slug}_cover.png"
-        cover_path.write_bytes(img_response.content)
-        
-        logger.info(f"Cover generated: {cover_path}")
-        return cover_path
-        
-    except Exception as e:
-        logger.error(f"DALL-E cover generation failed: {e}")
-        # Fallback to template
-        return generate_cover_template(metadata, slug)
 
-
-def generate_cover_template(
-    metadata: PublishingMetadata,
-    slug: str
-) -> Path:
-    """Generate cover using PIL template (fallback)."""
-    from PIL import Image, ImageDraw, ImageFont
-    
     paths = get_project_paths(slug)
-    
-    # Create blank cover
-    width, height = 1600, 2400
-    img = Image.new('RGB', (width, height), color='#2c3e50')
-    draw = ImageDraw.Draw(img)
-    
-    try:
-        # Try to load a nice font
-        title_font = ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSerif-Bold.ttf", 80)
-        author_font = ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSerif.ttf", 50)
-        badge_font = ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf", 35)
-    except:
-        # Fallback to default
-        title_font = ImageFont.load_default()
-        author_font = ImageFont.load_default()
-        badge_font = ImageFont.load_default()
-    
-    # Draw title (wrapped)
-    title_words = metadata.title.split()
-    title_lines = []
-    current_line = ""
-    
-    for word in title_words:
-        test_line = current_line + " " + word if current_line else word
-        bbox = draw.textbbox((0, 0), test_line, font=title_font)
-        if bbox[2] - bbox[0] < width - 200:
-            current_line = test_line
-        else:
-            if current_line:
-                title_lines.append(current_line)
-            current_line = word
-    
-    if current_line:
-        title_lines.append(current_line)
-    
-    # Draw centered title
-    y_offset = height // 3
-    for line in title_lines:
-        bbox = draw.textbbox((0, 0), line, font=title_font)
-        text_width = bbox[2] - bbox[0]
-        x = (width - text_width) // 2
-        draw.text((x, y_offset), line, fill='#ecf0f1', font=title_font)
-        y_offset += 100
-    
-    # Draw author
+
+    # Build rich, book-specific prompt for Ideogram
+    # Ideogram excels at rendering text on images
+    title_text = metadata.title
     author_text = f"by {metadata.author}"
-    bbox = draw.textbbox((0, 0), author_text, font=author_font)
-    author_width = bbox[2] - bbox[0]
-    draw.text(
-        ((width - author_width) // 2, y_offset + 50),
-        author_text,
-        fill='#bdc3c7',
-        font=author_font
-    )
-    
-    # Draw badge
-    badge_text = "Modernized Student Edition"
-    bbox = draw.textbbox((0, 0), badge_text, font=badge_font)
-    badge_width = bbox[2] - bbox[0]
-    badge_y = height - 300
-    
-    # Badge background
-    draw.rectangle(
-        [(width//2 - badge_width//2 - 30, badge_y - 20),
-         (width//2 + badge_width//2 + 30, badge_y + 50)],
-        fill='#3498db'
-    )
-    
-    draw.text(
-        ((width - badge_width) // 2, badge_y),
-        badge_text,
-        fill='white',
-        font=badge_font
-    )
-    
-    # Save
-    cover_path = paths["deliverables_ebook"] / f"{slug}_cover.png"
-    img.save(cover_path, "PNG")
-    
-    logger.info(f"Template cover generated: {cover_path}")
-    return cover_path
+
+    # Create book-specific prompt using the detailed cover_prompt from metadata
+    # The cover_prompt contains time period, setting, themes, mood, and visual elements
+    prompt = f"""Professional book cover design for a modernized classic literature edition.
+
+COVER TEXT REQUIREMENTS (CRITICAL - Ideogram must render these texts clearly and prominently):
+1. Main title: "{title_text}" - Large, bold, highly readable text in top half
+2. Author line: "{author_text}" - Medium size, below title
+3. Edition badge: "Modernized Student Edition" - Small, elegant badge at bottom
+
+BOOK-SPECIFIC VISUAL THEME:
+{metadata.cover_prompt}
+
+DESIGN STYLE: {metadata.cover_style} aesthetic
+
+COMPOSITION REQUIREMENTS:
+- Portrait book cover format (2:3 ratio)
+- Text MUST be the primary focus - large, bold, perfectly readable
+- Visual elements should SUPPORT and ENHANCE the text, not compete with it
+- Background and imagery should reflect the book's TIME PERIOD, SETTING, and THEMES (specified above)
+- Use the suggested COLOR PALETTE from the theme description
+- Create SYMBOLIC IMAGERY related to the book's content (not generic)
+- Include atmospheric elements that convey the book's MOOD
+
+TECHNICAL REQUIREMENTS:
+- Professional, retail-quality design (suitable for Amazon/bookstores)
+- High contrast for text readability
+- No people's faces or specific characters
+- Modern design sensibility appealing to students (grades 7-12) and educators
+- Thematic authenticity - visuals must reflect the actual book content
+
+The cover should immediately communicate the book's era, themes, and atmosphere while maintaining professional text clarity."""
+
+    # Retry loop with validation
+    for attempt in range(1, max_attempts + 1):
+        logger.info(f"Generating cover with Ideogram API (attempt {attempt}/{max_attempts})...")
+        logger.info(f"Book-specific cover prompt: {metadata.cover_prompt}")
+        logger.debug(f"Full Ideogram prompt: {prompt}")
+
+        try:
+            # Call Ideogram API
+            # https://ideogram.ai/api/docs
+            response = requests.post(
+                "https://api.ideogram.ai/generate",
+                headers={
+                    "Api-Key": config.ideogram_api_key,
+                    "Content-Type": "application/json"
+                },
+                json={
+                    "image_request": {
+                        "prompt": prompt,
+                        "aspect_ratio": "ASPECT_2_3",  # Portrait for book cover
+                        "model": "V_2",  # Latest model with best text rendering
+                        "magic_prompt_option": "AUTO",  # Let Ideogram enhance the prompt
+                        "style_type": "DESIGN"  # Design style for professional covers
+                    }
+                },
+                timeout=60
+            )
+
+            response.raise_for_status()
+            result = response.json()
+
+            # Get image URL from response
+            if "data" in result and len(result["data"]) > 0:
+                image_url = result["data"][0]["url"]
+
+                # Download image
+                img_response = requests.get(image_url, timeout=30)
+                img_response.raise_for_status()
+
+                # Save to deliverables
+                cover_path = paths["deliverables_ebook"] / f"{slug}_cover.png"
+                cover_path.write_bytes(img_response.content)
+
+                logger.info(f"Cover generated with Ideogram: {cover_path}")
+
+                # Validate the cover using vision API
+                validation = validate_cover_image(
+                    cover_path=cover_path,
+                    expected_title=metadata.title,
+                    expected_author=metadata.author,
+                    expected_edition="Modernized Student Edition"
+                )
+
+                if validation['is_valid']:
+                    logger.info(f"✓ Cover validation PASSED (attempt {attempt})")
+                    return cover_path
+                elif validation['should_retry'] and attempt < max_attempts:
+                    logger.warning(f"✗ Cover validation FAILED (attempt {attempt}/{max_attempts}): {validation['errors']}")
+                    logger.info(f"Retrying cover generation with refined prompt...")
+                    # Add negative prompt feedback for next attempt
+                    if 'errors' in validation and validation['errors']:
+                        prompt += f"\n\nIMPORTANT: Previous attempt had these issues - avoid them:\n"
+                        for error in validation['errors']:
+                            prompt += f"- {error}\n"
+                    continue  # Try again
+                else:
+                    raise RuntimeError(
+                        f"Ideogram cover validation failed: {validation.get('errors') or validation.get('warnings')}"
+                    )
+            else:
+                raise ValueError(f"No image data in Ideogram response: {result}")
+
+        except Exception as e:
+            logger.error(f"Ideogram cover generation attempt {attempt} failed: {e}")
+            if attempt == max_attempts:
+                raise
+
+    # If we get here, all attempts exhausted
+    raise RuntimeError("Ideogram cover generation failed after maximum retries")
 
 
 def generate_cover(
     metadata: PublishingMetadata,
-    slug: str,
-    use_ai: bool = True
+    slug: str
 ) -> CoverDesign:
-    """Generate book cover (AI or template).
-    
-    Args:
-        metadata: Publishing metadata
-        slug: Project slug
-        use_ai: Whether to use DALL-E (True) or template (False)
-        
-    Returns:
-        CoverDesign object with path to generated cover
-    """
-    if use_ai:
-        cover_path = generate_cover_with_dalle(metadata, slug)
-    else:
-        cover_path = generate_cover_template(metadata, slug)
-    
+    """Generate book cover using Ideogram AI."""
+    cover_path = generate_cover_with_ideogram(metadata, slug)
+
     return CoverDesign(
         image_path=str(cover_path),
         title=metadata.title,

@@ -1,9 +1,12 @@
-"""Pipeline runner for end-to-end book modernization."""
+"""Pipeline runner for end-to-end book modernization with Langfuse observability."""
 
 import asyncio
 import time
+import logging
 from typing import Dict, Any, Optional, List, Callable
 from pathlib import Path
+
+logger = logging.getLogger(__name__)
 
 from .graph import compile_graph, rewrite_node_async, qa_text_node_async
 from .models import FlowState, PipelineError
@@ -11,9 +14,17 @@ from .storage import (
     save_state, load_state, append_log_entry, get_project_paths,
     load_chapter_failures, clear_chapter_failure, load_chapter_doc, save_chapter_doc
 )
-from .config import ensure_directories
+from .config import ensure_directories, get_config, validate_audio_dependencies
 from .chains.writer import rewrite_chapter
 from .chains.checker import qa_chapter
+from .utils.health_check import create_health_check, log_pipeline_health
+from .utils.auth_validator_openrouter import validate_pipeline_auth
+from .utils.ssl_fix import fix_ssl_certificates
+from .utils.fail_fast import enable_fail_fast, disable_fail_fast, fail_fast_on_exception
+from .utils.langfuse_tracer import (
+    trace_pipeline, trace_node, track_error, flush_langfuse, is_langfuse_enabled
+)
+from .utils.debug_logger import set_trace_context, log_trace_link
 
 
 async def run_pipeline_async(
@@ -40,154 +51,257 @@ async def run_pipeline_async(
     """
     start_time = time.time()
     
-    try:
-        # Ensure directories exist
-        ensure_directories(slug)
-        
-        # Initialize state
-        initial_state: FlowState = {
-            "slug": slug,
-            "book_id": book_id,
-            "paths": {},
-            "raw_text": None,
-            "chapters": None,
-            "rewritten": None,
-            "qa_text_ok": None,
-            "audio_ok": None
-        }
-        
-        # Save initial state
-        save_state(slug, initial_state)
-        
-        # Log pipeline start
-        append_log_entry(slug, {
-            "action": "pipeline_started_async",
-            "book_id": book_id,
-            "chapters": chapters,
-            "start_time": time.time()
-        })
-        
-        # Run pipeline steps with async processing
-        state = initial_state
-        
-        # Step 1: Ingest (synchronous)
-        from .chains.ingest import IngestChain
-        raw_text = IngestChain.invoke({"book_id": book_id})
-        state["raw_text"] = raw_text
-        
-        # Step 2: Chapterize (synchronous)
-        from .chains.ingest import ChapterizeChain
-        chapters_data = ChapterizeChain.invoke({"raw_text": raw_text})
-        state["chapters"] = chapters_data
-        
-        # Filter chapters if specified
-        if chapters is not None:
-            state["chapters"] = [ch for ch in state["chapters"] if ch.chapter in chapters]
-        
-        # Step 3: Rewrite (async with parallel processing)
-        if progress_callback:
-            progress_callback({"step": "rewrite", "status": "started"})
-        
-        state = await rewrite_node_async(state, progress_callback)
-        
-        # Step 4: QA Text (async with parallel processing)
-        if progress_callback:
-            progress_callback({"step": "qa_text", "status": "started"})
-        
-        state = await qa_text_node_async(state, progress_callback)
-        
-        # Step 5: EPUB (synchronous)
-        if progress_callback:
-            progress_callback({"step": "epub", "status": "started"})
-        
-        from .graph import epub_node
-        state = epub_node(state)
-        
-        # Calculate runtime
-        runtime_sec = time.time() - start_time
-        
-        # Log pipeline completion
-        append_log_entry(slug, {
-            "action": "pipeline_completed_async",
-            "runtime_sec": runtime_sec,
-            "success": True
-        })
-        
-        if progress_callback:
-            progress_callback({"step": "complete", "status": "completed"})
-        
-        # Prepare result summary
-        result_summary = {
-            "slug": slug,
-            "book_id": book_id,
-            "success": True,
-            "runtime_sec": runtime_sec,
-            "deliverables": {
-                "epub_path": state.get("epub_path"),
-                "audio_chapters": 0,  # Not processed in this async version
-                "retail_sample": False
-            },
-            "qa_summary": {
-                "text_qa_passed": state.get("qa_text_ok", False),
-                "audio_qa_passed": False
-            }
-        }
-        
-        return result_summary
-        
-    except PipelineError as e:
-        runtime_sec = time.time() - start_time
-        
-        # Log pipeline failure with context
-        append_log_entry(slug, {
-            "action": "pipeline_failed_async",
-            "runtime_sec": runtime_sec,
-            "error": str(e),
-            "node": e.node,
-            "context": e.context
-        })
-        
-        if progress_callback:
-            progress_callback({"step": "error", "status": "failed", "error": str(e)})
-        
+    config = get_config()
+    # Reset fail-fast state unless explicitly enabled
+    disable_fail_fast()
+    if config.fail_fast_enabled:
+        enable_fail_fast()
+    
+    # Fix SSL certificates first
+    logger.info("Fixing SSL certificates...")
+    ssl_success = fix_ssl_certificates()
+    if not ssl_success:
+        logger.error("SSL certificate fix failed. Pipeline cannot proceed.")
         return {
-            "slug": slug,
-            "book_id": book_id,
             "success": False,
-            "runtime_sec": runtime_sec,
-            "error": str(e),
-            "failed_node": e.node,
-            "context": e.context,
-            "deliverables": {},
-            "qa_summary": {}
+            "error": "SSL certificate fix failed",
+            "runtime_sec": time.time() - start_time
         }
     
-    except Exception as e:
-        runtime_sec = time.time() - start_time
-        
-        # Log pipeline failure
-        append_log_entry(slug, {
-            "action": "pipeline_failed_async",
-            "runtime_sec": runtime_sec,
-            "error": str(e)
-        })
-        
-        if progress_callback:
-            progress_callback({"step": "error", "status": "failed", "error": str(e)})
-        
+    # Validate authentication
+    logger.info("Validating authentication services...")
+    auth_success = validate_pipeline_auth()
+    if not auth_success:
+        logger.error("Authentication validation failed. Pipeline cannot proceed.")
         return {
-            "slug": slug,
-            "book_id": book_id,
             "success": False,
-            "runtime_sec": runtime_sec,
-            "error": str(e),
-            "deliverables": {},
-            "qa_summary": {}
+            "error": "Authentication validation failed",
+            "runtime_sec": time.time() - start_time
         }
+
+    # Validate audio dependencies if enabled
+    try:
+        validate_audio_dependencies()
+    except (ImportError, ValueError) as e:
+        logger.error(f"Audio dependency validation failed: {e}")
+        return {
+            "success": False,
+            "error": f"Audio dependency validation failed: {e}",
+            "runtime_sec": time.time() - start_time
+        }
+    
+    # Initialize health monitoring
+    health_check = create_health_check(slug)
+    
+    # Start Langfuse tracing session
+    with trace_pipeline(
+        slug=slug,
+        book_id=book_id,
+        chapters=chapters,
+        metadata={"mode": "async", "parallel": True}
+    ) as trace:
+        # Set trace context for debug logging
+        if trace:
+            set_trace_context(trace_id=trace.id if hasattr(trace, 'id') else None)
+            log_trace_link(f"pipeline_async_{slug}")
+        
+        try:
+            # Ensure directories exist
+            ensure_directories(slug)
+            
+            # Initialize state
+            initial_state: FlowState = {
+                "slug": slug,
+                "book_id": book_id,
+                "paths": {},
+                "raw_text": None,
+                "chapters": None,
+                "rewritten": None,
+                "qa_text_ok": None,
+                "audio_ok": None
+            }
+            
+            # Save initial state
+            save_state(slug, initial_state)
+            
+            # Log pipeline start
+            append_log_entry(slug, {
+                "action": "pipeline_started_async",
+                "book_id": book_id,
+                "chapters": chapters,
+                "start_time": time.time()
+            })
+            
+            # Run pipeline steps with async processing
+            state = initial_state
+            
+            # Step 1: Ingest (synchronous)
+            with trace_node(trace, "ingest", slug) as ingest_span:
+                from .chains.ingest import IngestChain
+                raw_text = IngestChain.invoke({"book_id": book_id})
+                state["raw_text"] = raw_text
+            
+            # Step 2: Chapterize (synchronous)
+            with trace_node(trace, "chapterize", slug) as chapterize_span:
+                from .chains.ingest import ChapterizeChain
+                chapters_data = ChapterizeChain.invoke({"raw_text": raw_text})
+                state["chapters"] = chapters_data
+                
+                # Filter chapters if specified
+                if chapters is not None:
+                    original_count = len(state["chapters"])
+                    state["chapters"] = [ch for ch in state["chapters"] if ch.chapter in chapters]
+                    logger.info(f"Filtered chapters: {original_count} -> {len(state['chapters'])} (requested: {chapters})")
+            
+            # Step 3: Rewrite (async with parallel processing)
+            with trace_node(trace, "rewrite", slug, metadata={"chapter_count": len(state["chapters"])}) as rewrite_span:
+                if progress_callback:
+                    progress_callback({"step": "rewrite", "status": "started"})
+                
+                state = await rewrite_node_async(state, progress_callback)
+            
+            # Step 4: QA Text (async with parallel processing)
+            with trace_node(trace, "qa_text", slug) as qa_span:
+                if progress_callback:
+                    progress_callback({"step": "qa_text", "status": "started"})
+
+                state = await qa_text_node_async(state, progress_callback)
+
+            # Step 5: Metadata Generation (synchronous)
+            with trace_node(trace, "metadata", slug) as metadata_span:
+                if progress_callback:
+                    progress_callback({"step": "metadata", "status": "started"})
+
+                from .graph import metadata_node
+                state = metadata_node(state)
+
+            # Step 6: Cover Generation (synchronous)
+            with trace_node(trace, "cover", slug) as cover_span:
+                if progress_callback:
+                    progress_callback({"step": "cover", "status": "started"})
+
+                from .graph import cover_node
+                state = cover_node(state)
+
+            # Step 7: EPUB (synchronous)
+            with trace_node(trace, "epub", slug) as epub_span:
+                if progress_callback:
+                    progress_callback({"step": "epub", "status": "started"})
+
+                from .graph import epub_node
+                state = epub_node(state)
+            
+            # Calculate runtime
+            runtime_sec = time.time() - start_time
+            
+            # Log pipeline completion
+            append_log_entry(slug, {
+                "action": "pipeline_completed_async",
+                "runtime_sec": runtime_sec,
+                "success": True
+            })
+            
+            if progress_callback:
+                progress_callback({"step": "complete", "status": "completed"})
+            
+            # Flush Langfuse events
+            flush_langfuse()
+            
+            # Prepare result summary
+            result_summary = {
+                "slug": slug,
+                "book_id": book_id,
+                "success": True,
+                "runtime_sec": runtime_sec,
+                "deliverables": {
+                    "epub_path": state.get("epub_path"),
+                    "cover_path": state.get("cover_path"),
+                    "audio_chapters": 0,  # Not processed in this async version
+                    "retail_sample": False
+                },
+                "qa_summary": {
+                    "text_qa_passed": state.get("qa_text_ok", False),
+                    "audio_qa_passed": False
+                }
+            }
+            
+            return result_summary
+            
+        except PipelineError as e:
+            # Track error in Langfuse
+            track_error(trace, e, {
+                "node": e.node,
+                "context": e.context,
+                "slug": slug,
+                "book_id": book_id
+            })
+            
+            runtime_sec = time.time() - start_time
+            
+            # Log pipeline failure with context
+            append_log_entry(slug, {
+                "action": "pipeline_failed_async",
+                "runtime_sec": runtime_sec,
+                "error": str(e),
+                "node": e.node,
+                "context": e.context
+            })
+            
+            if progress_callback:
+                progress_callback({"step": "error", "status": "failed", "error": str(e)})
+            
+            flush_langfuse()
+            
+            return {
+                "slug": slug,
+                "book_id": book_id,
+                "success": False,
+                "runtime_sec": runtime_sec,
+                "error": str(e),
+                "failed_node": e.node,
+                "context": e.context,
+                "deliverables": {},
+                "qa_summary": {}
+            }
+        
+        except Exception as e:
+            # Track error in Langfuse
+            track_error(trace, e, {
+                "slug": slug,
+                "book_id": book_id,
+                "mode": "async"
+            })
+            
+            # Fail fast on any exception
+            fail_fast_on_exception(e, f"run_pipeline_async")
+            
+            runtime_sec = time.time() - start_time
+            
+            # Log pipeline failure
+            append_log_entry(slug, {
+                "action": "pipeline_failed_async",
+                "runtime_sec": runtime_sec,
+                "error": str(e)
+            })
+            
+            if progress_callback:
+                progress_callback({"step": "error", "status": "failed", "error": str(e)})
+            
+            flush_langfuse()
+            
+            return {
+                "slug": slug,
+                "book_id": book_id,
+                "success": False,
+                "runtime_sec": runtime_sec,
+                "error": str(e),
+                "deliverables": {},
+                "qa_summary": {}
+            }
 
 
 def run_pipeline(slug: str, book_id: int, chapters: Optional[list[int]] = None) -> Dict[str, Any]:
-    """Run the complete book modernization pipeline.
+    """Run the complete book modernization pipeline with Langfuse tracing.
     
     Args:
         slug: Project identifier
@@ -203,109 +317,155 @@ def run_pipeline(slug: str, book_id: int, chapters: Optional[list[int]] = None) 
     """
     start_time = time.time()
     
-    try:
-        # Ensure directories exist
-        ensure_directories(slug)
+    # Start Langfuse tracing session
+    with trace_pipeline(
+        slug=slug,
+        book_id=book_id,
+        chapters=chapters,
+        metadata={"mode": "sync", "parallel": False}
+    ) as trace:
+        # Set trace context for debug logging
+        if trace:
+            set_trace_context(trace_id=trace.id if hasattr(trace, 'id') else None)
+            log_trace_link(f"pipeline_sync_{slug}")
         
-        # Initialize state
-        initial_state: FlowState = {
-            "slug": slug,
-            "book_id": book_id,
-            "paths": {},
-            "raw_text": None,
-            "chapters": None,
-            "rewritten": None,
-            "qa_text_ok": None,
-            "audio_ok": None
-        }
-        
-        # Save initial state
-        save_state(slug, initial_state)
-        
-        # Log pipeline start
-        append_log_entry(slug, {
-            "action": "pipeline_started",
-            "book_id": book_id,
-            "chapters": chapters,
-            "start_time": time.time()
-        })
-        
-        # Compile and run graph
-        graph = compile_graph(slug)
-        result = graph.invoke(initial_state, config={"configurable": {"thread_id": slug}})
-        
-        # Calculate runtime
-        runtime_sec = time.time() - start_time
-        
-        # Log pipeline completion
-        append_log_entry(slug, {
-            "action": "pipeline_completed",
-            "runtime_sec": runtime_sec,
-            "success": True
-        })
-        
-        # Prepare result summary
-        result_summary = {
-            "slug": slug,
-            "book_id": book_id,
-            "success": True,
-            "runtime_sec": runtime_sec,
-            "deliverables": {
-                "epub_path": result.get("epub_path"),
-                "audio_chapters": len(result.get("mastered_files", [])),
-                "retail_sample": result.get("package_complete", False)
-            },
-            "qa_summary": {
-                "text_qa_passed": result.get("qa_text_ok", False),
-                "audio_qa_passed": result.get("audio_ok", False)
+        try:
+            # Ensure directories exist
+            ensure_directories(slug)
+            
+            # Initialize state
+            initial_state: FlowState = {
+                "slug": slug,
+                "book_id": book_id,
+                "paths": {},
+                "raw_text": None,
+                "chapters": None,
+                "rewritten": None,
+                "qa_text_ok": None,
+                "audio_ok": None
             }
-        }
+            
+            # Save initial state
+            save_state(slug, initial_state)
+            
+            # Log pipeline start
+            append_log_entry(slug, {
+                "action": "pipeline_started",
+                "book_id": book_id,
+                "chapters": chapters,
+                "start_time": time.time()
+            })
+            
+            # Store chapter filter in initial state so nodes can access it
+            initial_state["requested_chapters"] = chapters
+            
+            # Compile and run graph
+            graph = compile_graph(slug)
+            # Use unique thread_id when filtering chapters to avoid checkpoint conflicts
+            thread_id = f"{slug}_chapters_{'_'.join(map(str, chapters))}" if chapters else slug
+            logger.info(f"Using thread_id: {thread_id}")
+            
+            result = graph.invoke(initial_state, config={"configurable": {"thread_id": thread_id}})
+            
+            # Calculate runtime
+            runtime_sec = time.time() - start_time
+            
+            # Log pipeline completion
+            append_log_entry(slug, {
+                "action": "pipeline_completed",
+                "runtime_sec": runtime_sec,
+                "success": True
+            })
+            
+            # Flush Langfuse events
+            flush_langfuse()
+            
+            # Prepare result summary
+            result_summary = {
+                "slug": slug,
+                "book_id": book_id,
+                "success": True,
+                "runtime_sec": runtime_sec,
+                "rewritten": result.get("rewritten", []),
+                "deliverables": {
+                    "epub_path": result.get("epub_path"),
+                    "epub_quality_score": result.get("epub_quality_score"),
+                    "audio_chapters": len(result.get("mastered_files", [])),
+                    "retail_sample": result.get("package_complete", False)
+                },
+                "qa_summary": {
+                    "text_qa_passed": result.get("qa_text_ok", False),
+                    "audio_qa_passed": result.get("audio_ok", False)
+                }
+            }
+            
+            return result_summary
+            
+        except PipelineError as e:
+            # Track error in Langfuse
+            track_error(trace, e, {
+                "node": e.node,
+                "context": e.context,
+                "slug": slug,
+                "book_id": book_id
+            })
+            
+            runtime_sec = time.time() - start_time
+            
+            # Log pipeline failure with context
+            append_log_entry(slug, {
+                "action": "pipeline_failed",
+                "runtime_sec": runtime_sec,
+                "error": str(e),
+                "node": e.node,
+                "context": e.context
+            })
+            
+            flush_langfuse()
+            
+            return {
+                "slug": slug,
+                "book_id": book_id,
+                "success": False,
+                "runtime_sec": runtime_sec,
+                "error": str(e),
+                "failed_node": e.node,
+                "context": e.context,
+                "deliverables": {},
+                "qa_summary": {}
+            }
         
-        return result_summary
-        
-    except PipelineError as e:
-        runtime_sec = time.time() - start_time
-        
-        # Log pipeline failure with context
-        append_log_entry(slug, {
-            "action": "pipeline_failed",
-            "runtime_sec": runtime_sec,
-            "error": str(e),
-            "node": e.node,
-            "context": e.context
-        })
-        
-        return {
-            "slug": slug,
-            "book_id": book_id,
-            "success": False,
-            "runtime_sec": runtime_sec,
-            "error": str(e),
-            "failed_node": e.node,
-            "context": e.context,
-            "deliverables": {},
-            "qa_summary": {}
-        }
-    
-    except Exception as e:
-        runtime_sec = time.time() - start_time
-        
-        # Log pipeline failure
-        append_log_entry(slug, {
-            "action": "pipeline_failed",
-            "runtime_sec": runtime_sec,
-            "error": str(e)
-        })
-        
-        return {
-            "slug": slug,
-            "book_id": book_id,
-            "success": False,
-            "runtime_sec": runtime_sec,
-            "error": str(e),
-            "deliverables": {},
-            "qa_summary": {}
-        }
+        except Exception as e:
+            # Track error in Langfuse
+            track_error(trace, e, {
+                "slug": slug,
+                "book_id": book_id,
+                "mode": "sync"
+            })
+            
+            # Fail fast on any exception
+            fail_fast_on_exception(e, f"run_pipeline_async")
+            
+            runtime_sec = time.time() - start_time
+            
+            # Log pipeline failure
+            append_log_entry(slug, {
+                "action": "pipeline_failed",
+                "runtime_sec": runtime_sec,
+                "error": str(e)
+            })
+            
+            flush_langfuse()
+            
+            return {
+                "slug": slug,
+                "book_id": book_id,
+                "success": False,
+                "runtime_sec": runtime_sec,
+                "error": str(e),
+                "deliverables": {},
+                "qa_summary": {}
+            }
 
 
 def run_chapter_only(slug: str, chapter_num: int) -> Dict[str, Any]:
@@ -492,6 +652,9 @@ def remediate_chapters(slug: str, chapter_nums: Optional[List[int]] = None) -> D
             })
             
         except Exception as e:
+            # Fail fast on any exception
+            fail_fast_on_exception(e, f"remediate_chapters")
+            
             still_failing.append({"chapter": chapter_num, "error": str(e)})
             append_log_entry(slug, {
                 "action": "chapter_remediation_failed",
@@ -585,4 +748,3 @@ def resume_pipeline(slug: str) -> Dict[str, Any]:
             "runtime_sec": runtime_sec,
             "error": str(e)
         }
-

@@ -106,7 +106,7 @@ def test_book_metadata():
     assert metadata.author == "Jane Austen"
     assert metadata.public_domain_source == "Project Gutenberg #1342"
     assert metadata.language == "en-US"
-    assert metadata.voice["provider"] == "elevenlabs"
+    assert metadata.voice["provider"] == "fish_audio"
     assert metadata.acx["target_rms_db"] == -20
 
 

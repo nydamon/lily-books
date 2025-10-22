@@ -170,7 +170,7 @@ class TestAsyncChecker:
                     mock_result = (mock_checker_output, {
                         "quote_parity": True, 
                         "emphasis_parity": True, 
-                        "missed_archaic": [],
+                        "detected_archaic": [],
                         "fk_grade": 8.0,
                         "ratio": 1.1
                     })

@@ -13,18 +13,18 @@ from ..config import settings
 logger = logging.getLogger(__name__)
 
 
-def clean_illustration_placeholders(text: str) -> str:
+def clean_gutenberg_content(text: str) -> str:
     """
-    Clean illustration placeholders from text.
+    Remove Project Gutenberg boilerplate and illustration placeholders.
     
     Args:
         text: Raw text content
     
     Returns:
-        Cleaned text with illustration placeholders removed
+        Cleaned text with Gutenberg content and illustrations removed
     """
-    # Remove various illustration placeholder patterns
-    patterns = [
+    # Remove illustration placeholders
+    illustration_patterns = [
         r'\[Illustration[^\]]*\]',  # [Illustration], [Illustration: description], etc.
         r'\[ILLUSTRATION[^\]]*\]',  # Uppercase variants
         r'\[Fig\.\s*\d+[^\]]*\]',   # Figure references
@@ -35,7 +35,7 @@ def clean_illustration_placeholders(text: str) -> str:
     cleaned_text = text
     removed_count = 0
     
-    for pattern in patterns:
+    for pattern in illustration_patterns:
         matches = re.findall(pattern, cleaned_text, re.IGNORECASE)
         if matches:
             removed_count += len(matches)
@@ -43,24 +43,63 @@ def clean_illustration_placeholders(text: str) -> str:
     
     if removed_count > 0:
         logger.info(f"Removed {removed_count} illustration placeholders")
-        
-        # Clean up multiple blank lines
-        cleaned_text = re.sub(r'\n{3,}', '\n\n', cleaned_text)
-        
-        # Clean up leading/trailing whitespace
-        cleaned_text = cleaned_text.strip()
+    
+    # Remove Project Gutenberg header (everything before "*** START OF")
+    start_markers = [
+        r'\*\*\* START OF (THE|THIS) PROJECT GUTENBERG EBOOK[^\*]*\*\*\*',
+        r'\*\*\*START OF (THE|THIS) PROJECT GUTENBERG EBOOK[^\*]*\*\*\*',
+    ]
+    
+    for marker in start_markers:
+        match = re.search(marker, cleaned_text, re.IGNORECASE)
+        if match:
+            # Keep everything after the marker
+            cleaned_text = cleaned_text[match.end():]
+            logger.info("Removed Project Gutenberg header")
+            break
+    
+    # Remove Project Gutenberg footer (everything after "*** END OF")
+    end_markers = [
+        r'\*\*\* END OF (THE|THIS) PROJECT GUTENBERG EBOOK[^\*]*\*\*\*',
+        r'\*\*\*END OF (THE|THIS) PROJECT GUTENBERG EBOOK[^\*]*\*\*\*',
+    ]
+    
+    for marker in end_markers:
+        match = re.search(marker, cleaned_text, re.IGNORECASE)
+        if match:
+            # Keep everything before the marker
+            cleaned_text = cleaned_text[:match.start()]
+            logger.info("Removed Project Gutenberg footer")
+            break
+    
+    # Clean up multiple blank lines
+    cleaned_text = re.sub(r'\n{3,}', '\n\n', cleaned_text)
+    
+    # Clean up leading/trailing whitespace
+    cleaned_text = cleaned_text.strip()
     
     return cleaned_text
 
 
 def load_gutendex(book_id: int) -> str:
-    """Load raw text from Gutendex API with basic sanity checks."""
-    try:
-        response = requests.get(f"https://gutendex.com/books/{book_id}/", timeout=30)
-        response.raise_for_status()
-        md = response.json()
-    except Exception as e:
-        raise ValueError(f"Failed to load book metadata for ID {book_id}: {str(e)}")
+    """Load raw text from Gutendex API with basic sanity checks and retry logic."""
+    import time
+    max_retries = 3
+    retry_delay = 5
+    
+    # Retry metadata fetch
+    for attempt in range(1, max_retries + 1):
+        try:
+            logger.info(f"Fetching book metadata (attempt {attempt}/{max_retries})...")
+            response = requests.get(f"https://gutendex.com/books/{book_id}/", timeout=60)
+            response.raise_for_status()
+            md = response.json()
+            break
+        except Exception as e:
+            if attempt == max_retries:
+                raise ValueError(f"Failed to load book metadata for ID {book_id} after {max_retries} attempts: {str(e)}")
+            logger.warning(f"Metadata fetch attempt {attempt} failed: {e}, retrying in {retry_delay}s...")
+            time.sleep(retry_delay)
     
     # Find the plain text URL
     text_url = None
@@ -72,30 +111,36 @@ def load_gutendex(book_id: int) -> str:
     if not text_url:
         raise ValueError(f"No plain text format found for book {book_id}")
     
-    try:
-        response = requests.get(text_url, timeout=60)
-        response.raise_for_status()
-        text = response.text
-        
-        # Basic sanity checks
-        if len(text) < 1000:
-            logger.warning(f"Text content is very short ({len(text)} chars) for book {book_id}")
-        
-        if len(text) > 10_000_000:  # 10MB limit
-            logger.warning(f"Text content is very long ({len(text)} chars) for book {book_id}")
-        
-        # Check for basic text quality
-        if not any(char.isalpha() for char in text[:1000]):
-            logger.warning(f"Text content appears to lack alphabetic characters for book {book_id}")
-        
-        # Clean illustration placeholders
-        text = clean_illustration_placeholders(text)
-        
-        logger.info(f"Loaded text for book {book_id}: {len(text)} chars")
-        return text
-        
-    except Exception as e:
-        raise ValueError(f"Failed to load text content for book {book_id}: {str(e)}")
+    # Retry text content fetch
+    for attempt in range(1, max_retries + 1):
+        try:
+            logger.info(f"Fetching book text content (attempt {attempt}/{max_retries})...")
+            response = requests.get(text_url, timeout=90)
+            response.raise_for_status()
+            text = response.text
+            break
+        except Exception as e:
+            if attempt == max_retries:
+                raise ValueError(f"Failed to load text content for book {book_id} after {max_retries} attempts: {str(e)}")
+            logger.warning(f"Text fetch attempt {attempt} failed: {e}, retrying in {retry_delay}s...")
+            time.sleep(retry_delay)
+    
+    # Basic sanity checks
+    if len(text) < 1000:
+        logger.warning(f"Text content is very short ({len(text)} chars) for book {book_id}")
+    
+    if len(text) > 10_000_000:  # 10MB limit
+        logger.warning(f"Text content is very long ({len(text)} chars) for book {book_id}")
+    
+    # Check for basic text quality
+    if not any(char.isalpha() for char in text[:1000]):
+        logger.warning(f"Text content appears to lack alphabetic characters for book {book_id}")
+    
+    # Clean Project Gutenberg content and illustration placeholders
+    text = clean_gutenberg_content(text)
+    
+    logger.info(f"Loaded text for book {book_id}: {len(text)} chars")
+    return text
 
 
 def chapterize(text: str) -> List[ChapterSplit]:

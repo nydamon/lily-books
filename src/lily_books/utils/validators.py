@@ -1,7 +1,7 @@
 """LLM-driven validation utilities with self-healing capabilities."""
 
 import logging
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Tuple
 from pydantic import ValidationError
 
 from ..models import WriterOutput, CheckerOutput, ModernizedParagraph
@@ -25,6 +25,15 @@ def safe_parse_writer_output(output: Any) -> Optional[WriterOutput]:
             return output
         elif isinstance(output, dict):
             return WriterOutput(**output)
+        elif isinstance(output, str):
+            # Try to parse JSON string
+            try:
+                import json
+                output_dict = json.loads(output)
+                return WriterOutput(**output_dict)
+            except (json.JSONDecodeError, TypeError):
+                logger.warning(f"Unexpected string WriterOutput that cannot be parsed: {output[:100]}")
+                return None
         else:
             logger.warning(f"Unexpected WriterOutput type: {type(output)}")
             return None
@@ -57,6 +66,105 @@ def safe_parse_checker_output(output: Any) -> Optional[CheckerOutput]:
         logger.error(f"Failed to parse CheckerOutput: {e}")
         return None
 
+
+def validate_writer_output(output: WriterOutput, expected_count: int) -> Tuple[bool, List[str]]:
+    """Validate WriterOutput paragraphs."""
+    errors: List[str] = []
+
+    actual_count = len(output.paragraphs)
+    if actual_count != expected_count:
+        errors.append(
+            f"Paragraph count mismatch: expected {expected_count}, got {actual_count}"
+        )
+
+    for idx, paragraph in enumerate(output.paragraphs):
+        text = (paragraph.modern or "").strip()
+        if not text:
+            errors.append(f"Paragraph {idx} is empty")
+
+    return len(errors) == 0, errors
+
+
+def validate_checker_output(output: CheckerOutput) -> Tuple[bool, List[str]]:
+    """Validate CheckerOutput values."""
+    errors: List[str] = []
+
+    score = output.fidelity_score
+    if score is None or not (0 <= score <= 100):
+        errors.append("Invalid fidelity score")
+
+    return len(errors) == 0, errors
+
+
+def validate_paragraph_pair(orig: str, modern: str, max_ratio: float = 3.0) -> Tuple[bool, List[str]]:
+    """Validate a pair of original/modern paragraphs."""
+    errors: List[str] = []
+
+    orig_text = (orig or "").strip()
+    modern_text = (modern or "").strip()
+
+    if not orig_text or not modern_text:
+        errors.append("Paragraph text is empty")
+    else:
+        ratio = len(modern_text) / max(1, len(orig_text))
+        if ratio > max_ratio:
+            errors.append("Modernized text is too long compared to original")
+
+    return len(errors) == 0, errors
+
+
+def validate_batch_consistency(originals: List[str], moderns: List[str]) -> Tuple[bool, List[str]]:
+    """Validate batch consistency between originals and modern texts."""
+    errors: List[str] = []
+
+    if len(originals) != len(moderns):
+        errors.append("Original/modern paragraph count mismatch")
+
+    return len(errors) == 0, errors
+
+
+def safe_validate_writer_output(output: WriterOutput, expected_count: int) -> WriterOutput:
+    """Run writer validation and provide fallback content when invalid."""
+    is_valid, errors = validate_writer_output(output, expected_count)
+    if is_valid:
+        return output
+
+    fallback_messages = errors or ["Validation failed"]
+    paragraphs: List[ModernizedParagraph] = []
+    for idx in range(expected_count):
+        if idx == 0:
+            paragraphs.append(ModernizedParagraph(modern=f"[Validation failed] {fallback_messages[0]}"))
+        else:
+            paragraphs.append(ModernizedParagraph(modern=""))
+
+    return WriterOutput(paragraphs=paragraphs)
+
+
+def safe_validate_checker_output(output: CheckerOutput) -> CheckerOutput:
+    """Run checker validation and clamp values when invalid."""
+    is_valid, errors = validate_checker_output(output)
+    if is_valid:
+        return output
+
+    fallback_score = 50
+    score = output.fidelity_score if output.fidelity_score is not None else fallback_score
+    try:
+        score_int = int(score)
+    except Exception:
+        score_int = fallback_score
+
+    if not (0 <= score_int <= 100):
+        score_int = fallback_score
+
+    return CheckerOutput(
+        fidelity_score=score_int,
+        readability_appropriate=bool(output.readability_appropriate),
+        formatting_preserved=bool(output.formatting_preserved),
+        tone_consistent=bool(output.tone_consistent),
+        quote_count_match=bool(output.quote_count_match),
+        emphasis_preserved=bool(output.emphasis_preserved),
+        issues=output.issues or []
+    )
 
 def clean_checker_output(output: dict) -> dict:
     """

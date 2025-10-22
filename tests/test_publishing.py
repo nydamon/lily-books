@@ -3,7 +3,7 @@
 import pytest
 from pathlib import Path
 from lily_books.chains.metadata_generator import generate_metadata
-from lily_books.tools.cover_generator import generate_cover, generate_cover_template
+from lily_books.tools.cover_generator import generate_cover
 from lily_books.models import PublishingMetadata, CoverDesign
 from tests.fixtures.sample_chapter import get_sample_chapter_doc
 
@@ -27,8 +27,8 @@ def test_metadata_generation():
     assert len(metadata.categories) >= 2
 
 
-def test_cover_template_generation():
-    """Test template-based cover generation."""
+def test_cover_generation_uses_ideogram(monkeypatch, tmp_path):
+    """Test AI cover generation via Ideogram (mocked)."""
     metadata = PublishingMetadata(
         title="Test Book",
         author="Test Author",
@@ -39,15 +39,48 @@ def test_cover_template_generation():
         categories=["Fiction"]
     )
     
-    # Use template (not AI)
-    cover_design = generate_cover(
-        metadata=metadata,
-        slug="test-cover",
-        use_ai=False
+    slug = "test-cover"
+
+    from lily_books.tools import cover_generator
+
+    def fake_generate_cover_with_ideogram(metadata, slug, max_attempts=3):
+        cover_path = tmp_path / f"{slug}_cover.png"
+        cover_path.write_bytes(b"FAKE IMAGE")
+        return cover_path
+
+    monkeypatch.setattr(
+        cover_generator,
+        "generate_cover_with_ideogram",
+        fake_generate_cover_with_ideogram
     )
-    
+
+    cover_design = generate_cover(metadata=metadata, slug=slug)
+
     assert cover_design.image_path
     assert Path(cover_design.image_path).exists()
+
+
+def test_cover_generation_requires_api_key(monkeypatch):
+    """AI cover generation should fail without Ideogram API key."""
+    metadata = PublishingMetadata(
+        title="Test Book",
+        author="Test Author",
+        original_author="Test Author",
+        short_description="A test book",
+        long_description="A longer test description.",
+        keywords=["test"],
+        categories=["Fiction"]
+    )
+
+    from lily_books.tools import cover_generator
+
+    class DummyConfig:
+        ideogram_api_key = ""
+
+    monkeypatch.setattr(cover_generator, "get_config", lambda: DummyConfig())
+
+    with pytest.raises(ValueError):
+        cover_generator.generate_cover_with_ideogram(metadata, "test-fail")
 
 
 def test_publishing_metadata_model():

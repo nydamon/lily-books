@@ -45,15 +45,29 @@ def filter_empty_paragraphs(pairs: List[ParaPair]) -> List[ParaPair]:
 
 
 def escape_html(text: str) -> str:
-    """Escape HTML entities and convert emphasis markers."""
-    # First escape HTML entities
+    """Escape HTML entities but preserve emphasis tags already converted by writer.
+
+    The writer chain already converts _italics_ to <em>italics</em>, so we need to:
+    1. Protect existing <em> and </em> tags
+    2. Escape dangerous HTML
+    3. Restore the protected emphasis tags
+    """
+    # Protect existing <em> and </em> tags by replacing with placeholders
+    text = text.replace('<em>', '___EMPHASIS_OPEN___')
+    text = text.replace('</em>', '___EMPHASIS_CLOSE___')
+
+    # Now escape HTML entities (will not affect our placeholders)
     escaped = html.escape(text)
-    
-    # Convert _text_ to <em>text</em>
+
+    # Restore the emphasis tags
+    escaped = escaped.replace('___EMPHASIS_OPEN___', '<em>')
+    escaped = escaped.replace('___EMPHASIS_CLOSE___', '</em>')
+
+    # Also convert any remaining _text_ patterns (fallback for un-modernized text)
     emphasis_pattern = r'_(.+?)_'
-    emphasized = re.sub(emphasis_pattern, r'<em>\1</em>', escaped)
-    
-    return emphasized
+    escaped = re.sub(emphasis_pattern, r'<em>\1</em>', escaped)
+
+    return escaped
 
 
 def create_copyright_page(metadata: PublishingMetadata) -> str:

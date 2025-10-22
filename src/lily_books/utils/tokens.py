@@ -3,21 +3,22 @@
 import tiktoken
 from typing import List, Dict, Tuple
 import logging
+import sys as _sys
+
+_sys.modules.setdefault("src.lily_books.utils.tokens", _sys.modules[__name__])
 
 logger = logging.getLogger(__name__)
 
 # Model context windows (approximate)
 MODEL_CONTEXT_WINDOWS = {
-    "openai/gpt-5": 400000,
-    "openai/gpt-5-mini": 400000,
-    "gpt-4o": 128000,
-    "gpt-4o-mini": 128000,
+    "openai/gpt-5-mini": 128000,
+    "openai/gpt-4o-mini": 128000,
     "gpt-4": 128000,
     "gpt-4-turbo": 128000,
     "anthropic/claude-sonnet-4.5": 1000000,
     "anthropic/claude-haiku-4.5": 200000,
-    "claude-3-5-sonnet-latest": 200000,
-    "claude-3-5-sonnet": 200000,
+    "anthropic/claude-haiku-4.5": 200000,
+    "anthropic/claude-sonnet-4.5": 200000,
     "claude-3-opus": 200000,
     "claude-3-sonnet": 200000,
     "claude-3-haiku": 200000,
@@ -25,23 +26,21 @@ MODEL_CONTEXT_WINDOWS = {
 
 # Model encoding mappings
 MODEL_ENCODINGS = {
-    "openai/gpt-5": "cl100k_base",
     "openai/gpt-5-mini": "cl100k_base",
-    "gpt-4o": "cl100k_base",
-    "gpt-4o-mini": "cl100k_base", 
+    "openai/gpt-4o-mini": "cl100k_base",
     "gpt-4": "cl100k_base",
     "gpt-4-turbo": "cl100k_base",
     "anthropic/claude-sonnet-4.5": "cl100k_base",  # Claude uses same encoding
     "anthropic/claude-haiku-4.5": "cl100k_base",
-    "claude-3-5-sonnet-latest": "cl100k_base",
-    "claude-3-5-sonnet": "cl100k_base",
+    "anthropic/claude-haiku-4.5": "cl100k_base",
+    "anthropic/claude-sonnet-4.5": "cl100k_base",
     "claude-3-opus": "cl100k_base",
     "claude-3-sonnet": "cl100k_base",
     "claude-3-haiku": "cl100k_base",
 }
 
 
-def count_tokens(text: str, model: str = "openai/gpt-5") -> int:
+def count_tokens(text: str, model: str = "openai/gpt-5-mini") -> int:
     """Count tokens in text for the specified model."""
     try:
         encoding_name = MODEL_ENCODINGS.get(model, "cl100k_base")
@@ -53,7 +52,7 @@ def count_tokens(text: str, model: str = "openai/gpt-5") -> int:
         return len(text) // 4
 
 
-def count_tokens_batch(texts: List[str], model: str = "openai/gpt-5") -> List[int]:
+def count_tokens_batch(texts: List[str], model: str = "openai/gpt-5-mini") -> List[int]:
     """Count tokens for a batch of texts."""
     return [count_tokens(text, model) for text in texts]
 
@@ -93,10 +92,10 @@ def validate_context_window(text: str, model: str, safety_margin: float = 0.2) -
 
 def calculate_optimal_batch_size(
     paragraphs: List[str], 
-    model: str = "openai/gpt-5",
-    target_utilization: float = 0.6,
+    model: str = "openai/gpt-5-mini",
+    target_utilization: float = 0.2,  # Reduced from 0.6 to 0.2
     min_batch_size: int = 1,
-    max_batch_size: int = 20
+    max_batch_size: int = 3  # Reduced from 20 to 3
 ) -> int:
     """
     Calculate optimal batch size based on token counts.
@@ -144,7 +143,7 @@ def calculate_optimal_batch_size(
     return batch_size
 
 
-def estimate_prompt_tokens(prompt_template: str, model: str = "openai/gpt-5") -> int:
+def estimate_prompt_tokens(prompt_template: str, model: str = "openai/gpt-5-mini") -> int:
     """Estimate tokens for a prompt template (without variable substitution)."""
     return count_tokens(prompt_template, model)
 

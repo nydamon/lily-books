@@ -250,12 +250,18 @@ async def health_check() -> HealthResponse:
     """Check API health and configuration."""
     from ..config import settings
     
-    # Check API keys
-    api_keys_ok = all([
-        settings.openai_api_key,
-        settings.anthropic_api_key,
-        settings.elevenlabs_api_key
-    ])
+    # Check API keys (respect optional features)
+    api_keys_ok = bool(settings.openrouter_api_key)
+
+    if settings.enable_audio:
+        api_keys_ok = api_keys_ok and bool(settings.fish_api_key)
+
+    api_keys_ok = api_keys_ok and bool(settings.ideogram_api_key)
+
+    if settings.langfuse_enabled:
+        api_keys_ok = api_keys_ok and bool(
+            settings.langfuse_public_key and settings.langfuse_secret_key
+        )
     
     # TODO: Add model connectivity checks
     models_ok = True
@@ -282,4 +288,3 @@ async def get_costs(slug: str) -> Dict[str, Any]:
 if __name__ == "__main__":
     import uvicorn
     uvicorn.run(app, host="0.0.0.0", port=8000)
-
