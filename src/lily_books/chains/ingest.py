@@ -14,15 +14,48 @@ logger = logging.getLogger(__name__)
 
 
 def strip_markdown_code_blocks(text: str) -> str:
-    """Remove markdown code blocks from LLM output.
+    """Remove markdown code blocks and extract JSON from LLM output.
 
-    Some LLMs wrap JSON in ```json ... ``` blocks which breaks parsing.
-    This function strips those markers.
+    Some LLMs wrap JSON in ```json ... ``` blocks or add commentary.
+    This function extracts the JSON object/array reliably.
     """
-    # Remove ```json at start and ``` at end
-    cleaned = re.sub(r'^\s*```json\s*', '', text, flags=re.MULTILINE)
-    cleaned = re.sub(r'\s*```\s*$', '', cleaned, flags=re.MULTILINE)
-    return cleaned.strip()
+    # Remove markdown code blocks if present
+    cleaned = text
+    if "```json" in cleaned:
+        cleaned = cleaned.split("```json")[1].split("```")[0].strip()
+    elif "```" in cleaned:
+        cleaned = cleaned.split("```")[1].split("```")[0].strip()
+
+    # Find the JSON structure - it starts with { or [ and ends with } or ]
+    # This handles cases where LLM adds commentary before or after the JSON
+    start_char = '{'
+    end_char = '}'
+    start_idx = cleaned.find('{')
+
+    # Check if it's an array instead
+    array_idx = cleaned.find('[')
+    if array_idx != -1 and (start_idx == -1 or array_idx < start_idx):
+        start_idx = array_idx
+        start_char = '['
+        end_char = ']'
+
+    if start_idx == -1:
+        # No JSON found, return original (will likely fail parsing, but that's expected)
+        return text.strip()
+
+    # Find the matching closing character
+    count = 0
+    end_idx = start_idx
+    for i in range(start_idx, len(cleaned)):
+        if cleaned[i] == start_char:
+            count += 1
+        elif cleaned[i] == end_char:
+            count -= 1
+            if count == 0:
+                end_idx = i + 1
+                break
+
+    return cleaned[start_idx:end_idx]
 
 
 def clean_gutenberg_content(text: str) -> str:

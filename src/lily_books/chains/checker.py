@@ -37,15 +37,38 @@ checker_chain = None
 
 
 def strip_markdown_code_blocks(text: str) -> str:
-    """Remove markdown code blocks from LLM output.
+    """Remove markdown code blocks and extract JSON from LLM output.
 
-    Some LLMs wrap JSON in ```json ... ``` blocks which breaks parsing.
-    This function strips those markers.
+    Some LLMs wrap JSON in ```json ... ``` blocks or add commentary.
+    This function extracts the JSON object reliably.
     """
-    # Remove ```json at start and ``` at end
-    cleaned = re.sub(r'^\s*```json\s*', '', text, flags=re.MULTILINE)
-    cleaned = re.sub(r'\s*```\s*$', '', cleaned, flags=re.MULTILINE)
-    return cleaned.strip()
+    # Remove markdown code blocks if present
+    cleaned = text
+    if "```json" in cleaned:
+        cleaned = cleaned.split("```json")[1].split("```")[0].strip()
+    elif "```" in cleaned:
+        cleaned = cleaned.split("```")[1].split("```")[0].strip()
+
+    # Find the JSON object - it starts with { and ends with }
+    # This handles cases where LLM adds commentary before or after the JSON
+    start_idx = cleaned.find('{')
+    if start_idx == -1:
+        # No JSON found, return original (will likely fail parsing, but that's expected)
+        return text.strip()
+
+    # Find the matching closing brace
+    brace_count = 0
+    end_idx = start_idx
+    for i in range(start_idx, len(cleaned)):
+        if cleaned[i] == '{':
+            brace_count += 1
+        elif cleaned[i] == '}':
+            brace_count -= 1
+            if brace_count == 0:
+                end_idx = i + 1
+                break
+
+    return cleaned[start_idx:end_idx]
 
 
 def _build_checker_chain(trace_name: Optional[str] = None):
