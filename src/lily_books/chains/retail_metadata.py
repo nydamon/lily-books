@@ -40,7 +40,6 @@ class RetailMetadataGenerator:
     def __init__(self):
         self.llm = create_llm_with_fallback(
             provider="openai",
-            model_name="openai/gpt-4o-mini",  # Via OpenRouter
             temperature=0.7,
         )
         self.parser = JsonOutputParser(pydantic_object=RetailMetadata)
