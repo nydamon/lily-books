@@ -23,7 +23,7 @@ from typing import Any
 import requests
 
 from lily_books.config import settings
-from lily_books.models import FlowState, UploadResult
+from lily_books.models import FlowState, PublishingMetadata, UploadResult
 
 
 class Draft2DigitalAPI:
@@ -336,12 +336,16 @@ class Draft2DigitalUploader:
                 )
 
             # Extract metadata
-            pub_meta = state.get("publishing_metadata", {})
+            pub_meta = state.get("publishing_metadata")
+            if isinstance(pub_meta, PublishingMetadata):
+                pub_meta_dict = pub_meta.model_dump()
+            else:
+                pub_meta_dict = pub_meta or {}
             retail_meta = state.get("retail_metadata", {})
             pricing = state.get("pricing", {})
 
-            title = pub_meta.get("title", "Untitled")
-            authors = [pub_meta.get("original_author", "Unknown")]
+            title = pub_meta_dict.get("title", "Untitled")
+            authors = [pub_meta_dict.get("original_author", "Unknown")]
             description = retail_meta.get("description_long", "")
             keywords = retail_meta.get("keywords", [])[:20]  # D2D accepts many
             categories = retail_meta.get("bisac_categories", [])

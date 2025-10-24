@@ -13,7 +13,7 @@ Amazon does not provide an official public API for KDP uploads.
 from datetime import datetime
 from typing import Any
 
-from lily_books.models import FlowState, UploadResult
+from lily_books.models import FlowState, PublishingMetadata, UploadResult
 
 
 class AmazonKDPUploader:
@@ -54,6 +54,12 @@ class AmazonKDPUploader:
         # 8. Return ASIN (if available immediately)
 
         # For now, return instructions for manual upload
+        pub_meta = state.get("publishing_metadata")
+        if isinstance(pub_meta, PublishingMetadata):
+            pub_meta_dict = pub_meta.model_dump()
+        else:
+            pub_meta_dict = pub_meta or {}
+
         manual_steps = """
 Amazon KDP Manual Upload Steps:
 
@@ -86,9 +92,9 @@ Amazon KDP Manual Upload Steps:
    - Wait 24-72 hours for review
    - ASIN will be assigned after approval
 """.format(
-            title=state.get("publishing_metadata", {}).get("title", ""),
-            subtitle=state.get("publishing_metadata", {}).get("subtitle", ""),
-            author=state.get("publishing_metadata", {}).get("original_author", ""),
+            title=pub_meta_dict.get("title", ""),
+            subtitle=pub_meta_dict.get("subtitle", ""),
+            author=pub_meta_dict.get("original_author", ""),
             description=state.get("retail_metadata", {}).get("description_short", ""),
             keywords=", ".join(state.get("retail_metadata", {}).get("amazon_keywords", [])[:7]),
             epub_file=kindle_edition["file_path"],

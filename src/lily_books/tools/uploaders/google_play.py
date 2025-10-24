@@ -14,7 +14,7 @@ Docs: https://developers.google.com/books/
 from datetime import datetime
 from typing import Any
 
-from lily_books.models import FlowState, UploadResult
+from lily_books.models import FlowState, PublishingMetadata, UploadResult
 
 
 class GooglePlayBooksUploader:
@@ -51,6 +51,12 @@ class GooglePlayBooksUploader:
         # 4. Set pricing
         # 5. Publish to Google Play Books
         # 6. Return Google volume ID
+
+        pub_meta = state.get("publishing_metadata")
+        if isinstance(pub_meta, PublishingMetadata):
+            pub_meta_dict = pub_meta.model_dump()
+        else:
+            pub_meta_dict = pub_meta or {}
 
         setup_instructions = """
 Google Play Books API Setup:
@@ -94,8 +100,8 @@ Google Play Books API Setup:
 For detailed implementation, see:
 https://developers.google.com/books/docs/partner/getting_started
 """.format(
-            title=state.get("publishing_metadata", {}).get("title", ""),
-            author=state.get("publishing_metadata", {}).get("original_author", ""),
+            title=pub_meta_dict.get("title", ""),
+            author=pub_meta_dict.get("original_author", ""),
             description=state.get("retail_metadata", {}).get("description_short", ""),
             price=state.get("pricing", {}).get("base_price_usd", 2.99),
             epub_file=universal_edition["file_path"],

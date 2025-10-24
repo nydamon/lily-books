@@ -8,7 +8,7 @@ Manages assignment of free identifiers across different retailers:
 
 from typing import Any
 
-from lily_books.models import EditionInfo, FlowState, IdentifierInfo
+from lily_books.models import EditionInfo, FlowState, IdentifierInfo, PublishingMetadata
 
 
 class FreeIdentifierManager:
@@ -57,6 +57,12 @@ class FreeIdentifierManager:
         editions = []
 
         # Edition 1: Amazon Kindle
+        pub_meta = state.get("publishing_metadata")
+        if isinstance(pub_meta, PublishingMetadata):
+            pub_meta_dict = pub_meta.model_dump()
+        else:
+            pub_meta_dict = pub_meta or {}
+
         if "amazon" in target_retailers:
             kindle_identifier = IdentifierInfo(
                 identifier_type="ASIN",
@@ -75,9 +81,9 @@ class FreeIdentifierManager:
                 file_path=None,  # Will be set by edition preparation
                 exclusive_to="amazon",
                 distribution_to=[],
-                publisher_of_record=state.get("publishing_metadata", {}).get(
+                publisher_of_record=pub_meta_dict.get(
                     "publisher", "Modernized Classics Press"
-                ),
+                )
             )
 
             editions.append(kindle_edition)
@@ -117,7 +123,7 @@ class FreeIdentifierManager:
                     notes="Google assigns ID at upload",
                 )
                 retailer = "google_play"
-                publisher_of_record = state.get("publishing_metadata", {}).get(
+                publisher_of_record = pub_meta_dict.get(
                     "publisher", "Modernized Classics Press"
                 )
 
@@ -151,8 +157,14 @@ class FreeIdentifierManager:
         if not state.get("identifiers"):
             raise ValueError("Identifiers must be assigned first")
 
-        base_title = state.get("publishing_metadata", {}).get("title", "Untitled")
-        subtitle = state.get("publishing_metadata", {}).get("subtitle", "")
+        pub_meta = state.get("publishing_metadata")
+        if isinstance(pub_meta, PublishingMetadata):
+            pub_meta_dict = pub_meta.model_dump()
+        else:
+            pub_meta_dict = pub_meta or {}
+
+        base_title = pub_meta_dict.get("title", "Untitled")
+        subtitle = pub_meta_dict.get("subtitle", "")
         description = state.get("retail_metadata", {}).get("description_long", "")
         keywords = state.get("retail_metadata", {}).get("keywords", [])
         categories = state.get("retail_metadata", {}).get("bisac_categories", [])

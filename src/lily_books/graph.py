@@ -25,6 +25,7 @@ from .models import (
     IngestError,
     MasterError,
     PackageError,
+    PublishingMetadata,
     QAError,
     RewriteError,
     TTSError,
@@ -999,6 +1000,9 @@ def cover_node(state: FlowState) -> FlowState:
             logger.warning("No publishing metadata, skipping cover")
             return state
 
+        if isinstance(pub_metadata, dict):
+            pub_metadata = PublishingMetadata(**pub_metadata)
+
         # Generate cover (AI or template based on config)
         if not getattr(config, "use_ai_covers", True):
             raise CoverError(
@@ -1049,6 +1053,9 @@ def epub_node(state: FlowState) -> FlowState:
         # Get extended metadata and cover if available
         pub_metadata = state.get("publishing_metadata")
         cover_path = Path(state["cover_path"]) if state.get("cover_path") else None
+
+        if isinstance(pub_metadata, dict):
+            pub_metadata = PublishingMetadata(**pub_metadata)
 
         # Build EPUB with all enhancements
         epub_path = build_epub(

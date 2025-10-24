@@ -431,7 +431,7 @@ class FlowState(TypedDict):
     mastered_files: list[dict] | None  # Mastered audio files
 
     # Publishing metadata (basic)
-    publishing_metadata: PublishingMetadata | None
+    publishing_metadata: PublishingMetadata | dict[str, Any] | None
     cover_design: CoverDesign | None
     cover_path: str | None
 

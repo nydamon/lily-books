@@ -11,7 +11,7 @@ from typing import Any
 from langchain_core.output_parsers import JsonOutputParser
 from langchain_core.prompts import ChatPromptTemplate
 
-from lily_books.models import FlowState, RetailMetadata
+from lily_books.models import FlowState, PublishingMetadata, RetailMetadata
 from lily_books.utils.llm_factory import create_llm_with_fallback
 
 # BISAC category reference
@@ -48,10 +48,15 @@ class RetailMetadataGenerator:
         """Generate SEO-optimized metadata for retail distribution."""
 
         # Extract existing metadata
-        pub_meta = state.get("publishing_metadata", {})
-        original_title = pub_meta.get("title", "Untitled")
-        author = pub_meta.get("original_author", "Unknown")
-        modernized_author = pub_meta.get("author", author)
+        pub_meta = state.get("publishing_metadata")
+        if isinstance(pub_meta, PublishingMetadata):
+            pub_meta_dict = pub_meta.model_dump()
+        else:
+            pub_meta_dict = pub_meta or {}
+
+        original_title = pub_meta_dict.get("title", "Untitled")
+        author = pub_meta_dict.get("original_author", "Unknown")
+        modernized_author = pub_meta_dict.get("author", author)
 
         # Get sample text for context
         sample_text = self._extract_sample_text(state)
@@ -195,9 +200,13 @@ Requirements:
 
     def _generate_fallback_metadata(self, state: FlowState) -> RetailMetadata:
         """Generate basic fallback metadata if AI generation fails."""
-        pub_meta = state.get("publishing_metadata", {})
-        title = pub_meta.get("title", "Untitled")
-        author = pub_meta.get("original_author", "Unknown")
+        pub_meta = state.get("publishing_metadata")
+        if isinstance(pub_meta, PublishingMetadata):
+            pub_meta_dict = pub_meta.model_dump()
+        else:
+            pub_meta_dict = pub_meta or {}
+        title = pub_meta_dict.get("title", "Untitled")
+        author = pub_meta_dict.get("original_author", "Unknown")
 
         return RetailMetadata(
             title_variations=[

@@ -9,7 +9,7 @@ Validates that metadata meets retailer requirements for:
 from datetime import datetime
 from typing import Any
 
-from lily_books.models import FlowState, ValidationReport
+from lily_books.models import FlowState, PublishingMetadata, ValidationReport
 
 
 class MetadataValidator:
@@ -44,13 +44,17 @@ class MetadataValidator:
         # Check retail metadata exists
         retail_meta = state.get("retail_metadata")
         pub_meta = state.get("publishing_metadata")
+        if isinstance(pub_meta, PublishingMetadata):
+            pub_meta_dict = pub_meta.model_dump()
+        else:
+            pub_meta_dict = pub_meta or {}
 
         if not retail_meta:
             errors.append({"message": "Missing retail_metadata"})
             state["metadata_validated"] = False
             return state
 
-        if not pub_meta:
+        if not pub_meta_dict:
             errors.append({"message": "Missing publishing_metadata"})
             state["metadata_validated"] = False
             return state
@@ -60,17 +64,17 @@ class MetadataValidator:
 
         # Validate for Amazon
         if "amazon" in target_retailers:
-            amazon_errors = self._validate_amazon(retail_meta, pub_meta)
+            amazon_errors = self._validate_amazon(retail_meta, pub_meta_dict)
             errors.extend(amazon_errors)
 
         # Validate for Google
         if "google" in target_retailers:
-            google_errors = self._validate_google(retail_meta, pub_meta)
+            google_errors = self._validate_google(retail_meta, pub_meta_dict)
             errors.extend(google_errors)
 
         # Validate for Apple (via D2D)
         if "draft2digital" in target_retailers:
-            apple_errors = self._validate_apple(retail_meta, pub_meta)
+            apple_errors = self._validate_apple(retail_meta, pub_meta_dict)
             errors.extend(apple_errors)
 
         # Create validation report
