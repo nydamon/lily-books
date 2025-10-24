@@ -102,20 +102,22 @@ def _build_checker_chain(trace_name: Optional[str] = None):
 
     checker_llm = create_llm_with_fallback(**kwargs)
 
-    # Create a function to strip markdown from LLM output before parsing
-    def clean_llm_output(llm_response):
-        """Strip markdown code blocks from LLM response."""
+    # Create a function to extract and parse JSON from LLM output
+    def parse_llm_output(llm_response):
+        """Extract JSON from LLM response and parse to CheckerOutput."""
+        import json
         # Get the content from the LLM response
         content = llm_response.content if hasattr(llm_response, 'content') else str(llm_response)
-        # Strip markdown and return for parsing
-        return strip_markdown_code_blocks(content)
+        # Strip markdown and extract JSON
+        json_str = strip_markdown_code_blocks(content)
+        # Parse JSON to dict (let safe_parse_checker_output handle CheckerOutput conversion)
+        return json.loads(json_str)
 
     chain = (
         {"original": lambda d: d["orig"], "modern": lambda d: d["modern"], "format_instructions": lambda d: checker_parser.get_format_instructions()}
         | checker_prompt
         | checker_llm
-        | clean_llm_output
-        | checker_parser
+        | parse_llm_output
     )
 
     checker_chain = chain
