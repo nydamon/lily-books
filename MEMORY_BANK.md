@@ -241,18 +241,17 @@
 #### Required Environment Variables
 ```env
 # API Keys
-OPENAI_API_KEY=sk-proj-...
-ANTHROPIC_API_KEY=sk-ant-...
-ELEVENLABS_API_KEY=...
+OPENROUTER_API_KEY=sk-or-v1-...  # Required: For all LLM operations via OpenRouter
+FISH_API_KEY=...  # Optional: Required only if ENABLE_AUDIO=true
+IDEOGRAM_API_KEY=...  # Required: For AI cover generation
 
-# Model Configuration
-OPENAI_MODEL=gpt-4o
-ANTHROPIC_MODEL=claude-sonnet-4-5-20250929
-ELEVENLABS_VOICE_ID=2EiwWnXFnvU5JabPnv8n
+# Model Configuration (OpenRouter format)
+OPENAI_MODEL=openai/gpt-4o-mini
+ANTHROPIC_MODEL=anthropic/claude-haiku-4.5
 
-# Fallback Models
-OPENAI_FALLBACK_MODEL=gpt-4o-mini
-ANTHROPIC_FALLBACK_MODEL=claude-haiku-4-5-20251001
+# Fallback Models (OpenRouter format)
+OPENAI_FALLBACK_MODEL=openai/gpt-4o-mini
+ANTHROPIC_FALLBACK_MODEL=anthropic/claude-sonnet-4.5
 
 # Caching
 CACHE_ENABLED=true
@@ -566,8 +565,61 @@ LANGFUSE_HOST=https://cloud.langfuse.com
 - **Issues**: GitHub Issues
 - **Discussions**: GitHub Discussions
 
+### 2025-01-24: Critical Bug Fixes - JSON Parsing and OpenRouter Integration
+**Decision**: Fix critical parsing errors and standardize all API access through OpenRouter
+**Rationale**:
+- LangChain PydanticOutputParser was rejecting valid JSON from checker chain
+- Cover validation and other services were using direct Anthropic API instead of OpenRouter
+- Chapter detection regex didn't match standalone Roman numerals (I, II, III)
+- Multiple architectural violations needed correction
+**Impact**:
+- **JSON Parsing Fix**: Removed PydanticOutputParser from checker chain, replaced with manual `json.loads()` parsing
+  - Eliminated all "Invalid json output" errors
+  - More robust handling of LLM responses with markdown/commentary
+  - Chain now returns dict for processing by `safe_parse_checker_output()`
+- **OpenRouter Standardization**:
+  - Updated cover_validator.py to use OpenRouter REST API instead of direct Anthropic SDK
+  - Changed from ANTHROPIC_API_KEY to OPENROUTER_API_KEY
+  - All Claude access now goes through OpenRouter (architectural compliance)
+- **Chapter Detection**:
+  - Added Pattern 2 regex for standalone Roman numerals with blank lines
+  - Fixed line ending normalization (\r\n → \n)
+  - Result: Chapters properly detected (154 + 137 paragraphs for Gatsby ch 1-2)
+- **Model Standardization**:
+  - Removed all Claude 3.x references (opus/sonnet/haiku)
+  - Standardized on Claude 4.5 Haiku (anthropic/claude-haiku-4.5)
+  - Updated tokens.py, llm_factory.py, cover_validator.py
+- **Config Robustness**:
+  - Added `model_config = {"extra": "ignore"}` to Settings class
+  - Prevents Pydantic validation errors from legacy env vars
+  - Removed redundant openai_api_key field
+- **Robust JSON Extraction**:
+  - Implemented brace-matching algorithm in checker.py, writer.py, ingest.py
+  - Handles both objects {} and arrays []
+  - Extracts clean JSON from LLM commentary
+**Files Modified**:
+- `src/lily_books/chains/checker.py` - Replaced PydanticOutputParser with manual parsing
+- `src/lily_books/chains/ingest.py` - Enhanced chapter detection and JSON extraction
+- `src/lily_books/chains/writer.py` - Added robust JSON extraction
+- `src/lily_books/utils/cover_validator.py` - OpenRouter REST API integration
+- `src/lily_books/utils/tokens.py` - Removed Claude 3.x references
+- `src/lily_books/utils/llm_factory.py` - Fixed hardcoded model fallback
+- `src/lily_books/config.py` - Added extra field handling
+**Test Results**:
+- ✅ Pipeline completed with ZERO parsing errors
+- ✅ EPUB generated successfully (866KB)
+- ✅ No "Invalid json output" errors
+- ✅ Chapter content verified (not truncated)
+**Commits**:
+- `b829ed0` - Replace LangChain PydanticOutputParser with manual JSON parsing
+- `8683a1f` - Allow extra environment variables in Settings config
+- `aad32a6` - Robust JSON extraction across all LLM chains
+- `106e331` - Standardize all Claude usage to 4.5 Haiku via OpenRouter
+- `a88f5b1` - Resolve LLM JSON parsing regression with markdown stripping
+**Status**: ✅ Complete - All parsing errors resolved, OpenRouter fully integrated
+
 ---
 
-*Last Updated: 2025-01-21*
-*Version: 1.4.0*
-*Status: Production Ready with Fish Audio TTS Integration*
+*Last Updated: 2025-01-24*
+*Version: 1.4.1*
+*Status: Production Ready - Critical Bug Fixes Applied*

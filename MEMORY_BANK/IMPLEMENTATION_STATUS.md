@@ -4,9 +4,9 @@
 
 **Lily Books** - LangChain/LangGraph pipeline for modernizing public-domain books into student-friendly English with EPUB and audiobook generation.
 
-**Current Version**: 1.1.0  
-**Status**: Production Ready  
-**Last Updated**: 2025-01-02
+**Current Version**: 1.4.1
+**Status**: Production Ready - Critical Bug Fixes Applied
+**Last Updated**: 2025-01-24
 
 ## Implementation Progress
 
@@ -104,6 +104,29 @@
 - **Implementation**: Resume optimization to avoid redundant work
 - **Benefits**: Significant cost savings on pipeline restarts
 - **Files**: `src/lily_books/graph.py` (`rewrite_node`, `qa_text_node`)
+
+#### 10. Critical Bug Fixes (2025-01-24)
+- **Status**: ✅ Complete
+- **Issues Resolved**:
+  - JSON parsing errors from LangChain PydanticOutputParser
+  - Direct Anthropic API usage violating OpenRouter architecture
+  - Chapter detection failures for standalone Roman numerals
+  - Config validation errors from legacy environment variables
+- **Implementation**:
+  - Replaced PydanticOutputParser with manual `json.loads()` in checker chain
+  - Updated cover_validator.py to use OpenRouter REST API
+  - Added robust JSON extraction with brace-matching algorithm
+  - Enhanced chapter detection regex for standalone Roman numerals (I, II, III, etc.)
+  - Added `model_config = {"extra": "ignore"}` to Settings class
+  - Standardized all Claude usage to 4.5 Haiku via OpenRouter
+  - Removed all Claude 3.x model references
+- **Test Results**:
+  - ✅ ZERO JSON parsing errors
+  - ✅ EPUB generation successful (866KB)
+  - ✅ Chapter content verified (154 + 137 paragraphs for Gatsby)
+  - ✅ OpenRouter integration fully functional
+- **Files**: `src/lily_books/chains/checker.py`, `src/lily_books/chains/ingest.py`, `src/lily_books/chains/writer.py`, `src/lily_books/utils/cover_validator.py`, `src/lily_books/config.py`
+- **Commits**: b829ed0, 8683a1f, aad32a6, 106e331, a88f5b1
 
 ### ✅ Testing Suite (100% Complete)
 
