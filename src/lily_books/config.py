@@ -32,6 +32,12 @@ class Settings(BaseSettings):
     fish_api_key: str | None = None
     ideogram_api_key: str | None = None  # Required for Ideogram cover generation
 
+    # Retailer API Keys for Publishing/Distribution
+    kdp_email: str | None = None  # Amazon KDP login email
+    kdp_password: str | None = None  # Amazon KDP password
+    google_play_credentials_path: str | None = None  # Path to Google service account JSON
+    draft2digital_api_key: str | None = None  # Draft2Digital API key
+
     # Model configurations - OpenRouter only
     # GPT-4o-mini and Claude 4.5 Haiku via OpenRouter: https://openrouter.ai/models
     openai_model: str = "openai/gpt-4o-mini"
@@ -94,6 +100,13 @@ class Settings(BaseSettings):
     publisher_name: str = "Modernized Classics Press"
     publisher_url: str = ""
 
+    # Distribution & Publishing settings
+    enable_publishing: bool = False  # Enable retailer upload/distribution features
+    target_retailers: list[str] = []  # ["amazon", "google", "draft2digital"]
+    default_price_usd: float = 2.99  # Default ebook price
+    enable_human_review: bool = True  # Require human approval before upload
+    epubcheck_path: str = "epubcheck"  # Path to epubcheck executable
+
     # Pipeline feature toggles
     enable_qa_review: bool = True  # Enable/disable QA text validation
     enable_audio: bool = False  # Enable/disable audio generation
@@ -116,6 +129,10 @@ def get_project_paths(slug: str) -> dict[str, Path]:
         "deliverables_ebook": base_dir / "deliverables" / "ebook",
         "deliverables_audio": base_dir / "deliverables" / "audio",
         "meta": base_dir / "meta",
+        # NEW: Publishing paths
+        "editions": base_dir / "deliverables" / "ebook" / "editions",
+        "publishing": base_dir / "work" / "publishing",
+        "dashboard": Path("dashboard"),  # Global dashboard directory
     }
 
 

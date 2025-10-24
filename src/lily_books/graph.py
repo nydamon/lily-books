@@ -52,6 +52,20 @@ from .utils.debug_logger import (
     update_activity,
 )
 
+# Publishing/distribution tools
+from .chains.retail_metadata import generate_retail_metadata_node
+from .tools.edition_manager import prepare_editions_node
+from .tools.human_review import human_review_node
+from .tools.identifiers import assign_identifiers_node
+from .tools.pricing import calculate_pricing_node
+from .tools.publishing_dashboard import generate_publishing_report_node
+from .tools.uploaders import (
+    upload_to_d2d_node,
+    upload_to_google_node,
+    upload_to_kdp_node,
+)
+from .tools.validators import validate_epub_node, validate_metadata_node
+
 
 def ingest_node(state: FlowState) -> FlowState:
     """Load raw text from Gutendex API."""
@@ -1365,6 +1379,20 @@ def build_graph() -> StateGraph:
         graph.add_node("qa_audio", qa_audio_node)
         graph.add_node("package", package_node)
 
+    # Optional distribution/publishing nodes (only if enabled)
+    if config.enable_publishing:
+        graph.add_node("assign_identifiers", assign_identifiers_node)
+        graph.add_node("prepare_editions", prepare_editions_node)
+        graph.add_node("generate_retail_metadata", generate_retail_metadata_node)
+        graph.add_node("calculate_pricing", calculate_pricing_node)
+        graph.add_node("validate_metadata", validate_metadata_node)
+        graph.add_node("validate_epub", validate_epub_node)
+        graph.add_node("human_review", human_review_node)
+        graph.add_node("upload_amazon", upload_to_kdp_node)
+        graph.add_node("upload_google", upload_to_google_node)
+        graph.add_node("upload_d2d", upload_to_d2d_node)
+        graph.add_node("publishing_report", generate_publishing_report_node)
+
     # Set entry point
     graph.set_entry_point("ingest")
 
@@ -1398,17 +1426,76 @@ def build_graph() -> StateGraph:
     graph.add_edge("metadata", "cover")
     graph.add_edge("cover", "epub")
 
-    # Conditional routing based on audio enabled/disabled
+    # Determine next step after EPUB based on audio/publishing settings
     if config.enable_audio:
         # Audio enabled - add full audio pipeline
         graph.add_edge("epub", "tts")
         graph.add_edge("tts", "master")
         graph.add_edge("master", "qa_audio")
         graph.add_edge("qa_audio", "package")
-        graph.add_edge("package", END)
+
+        if config.enable_publishing:
+            # Connect audio pipeline to publishing pipeline
+            graph.add_edge("package", "assign_identifiers")
+        else:
+            # Audio only, no publishing
+            graph.add_edge("package", END)
+
+    elif config.enable_publishing:
+        # Publishing enabled but audio disabled - go from EPUB to publishing
+        graph.add_edge("epub", "assign_identifiers")
     else:
-        # Audio disabled - skip audio nodes and go straight to END
+        # Neither audio nor publishing - end after EPUB
         graph.add_edge("epub", END)
+
+    # Distribution/publishing pipeline (only if enabled)
+    if config.enable_publishing:
+        # Identifier and edition preparation
+        graph.add_edge("assign_identifiers", "prepare_editions")
+
+        # Metadata and pricing optimization
+        graph.add_edge("prepare_editions", "generate_retail_metadata")
+        graph.add_edge("generate_retail_metadata", "calculate_pricing")
+
+        # Validation gates
+        graph.add_edge("calculate_pricing", "validate_metadata")
+        graph.add_edge("validate_metadata", "validate_epub")
+        graph.add_edge("validate_epub", "human_review")
+
+        # Conditional: Human approval gate
+        def route_after_review(state: FlowState) -> str:
+            if state.get("human_approved", False):
+                return "upload_retailers"
+            else:
+                return "end_without_upload"
+
+        graph.add_conditional_edges(
+            "human_review",
+            route_after_review,
+            {
+                "upload_retailers": "upload_amazon",
+                "end_without_upload": "publishing_report",
+            },
+        )
+
+        # Retailer uploads (sequential for simplicity, could be parallel)
+        # Check which retailers are configured
+        target_retailers = config.target_retailers
+
+        if "amazon" in target_retailers:
+            graph.add_edge("upload_amazon", "upload_google")
+        else:
+            # Skip Amazon, go to Google
+            graph.add_edge("upload_amazon", "upload_google")
+
+        if "google" in target_retailers or "draft2digital" in target_retailers:
+            graph.add_edge("upload_google", "upload_d2d")
+        else:
+            graph.add_edge("upload_google", "publishing_report")
+
+        # Final report
+        graph.add_edge("upload_d2d", "publishing_report")
+        graph.add_edge("publishing_report", END)
 
     return graph
 
