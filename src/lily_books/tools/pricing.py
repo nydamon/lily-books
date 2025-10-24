@@ -112,10 +112,18 @@ class PricingOptimizer:
 
         total_words = 0
         for chapter_doc in state["rewritten"]:
-            for pair in chapter_doc.get("pairs", []):
+            pairs = getattr(chapter_doc, "pairs", None)
+            if pairs is None and isinstance(chapter_doc, dict):
+                pairs = chapter_doc.get("pairs", [])
+
+            for pair in pairs or []:
                 # Use modernized text for word count
-                modern_text = pair.get("modern", "")
-                total_words += len(modern_text.split())
+                modern_text = getattr(pair, "modern", None)
+                if modern_text is None and isinstance(pair, dict):
+                    modern_text = pair.get("modern", "")
+
+                if modern_text:
+                    total_words += len(modern_text.split())
 
         return total_words
 
