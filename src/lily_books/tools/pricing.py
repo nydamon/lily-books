@@ -103,7 +103,10 @@ class PricingOptimizer:
         return state
 
     def _estimate_word_count(self, state: FlowState) -> int:
-        """Estimate word count from rewritten chapters."""
+        """Estimate word count from rewritten chapters.
+
+        Handles both Pydantic ChapterDoc objects and dictionary representations.
+        """
         if not state.get("rewritten"):
             # Fallback: use raw text if available
             if state.get("raw_text"):
@@ -112,10 +115,23 @@ class PricingOptimizer:
 
         total_words = 0
         for chapter_doc in state["rewritten"]:
-            for pair in chapter_doc.get("pairs", []):
-                # Use modernized text for word count
-                modern_text = pair.get("modern", "")
-                total_words += len(modern_text.split())
+            # Handle both dictionary and Pydantic object access
+            if isinstance(chapter_doc, dict):
+                pairs = chapter_doc.get("pairs", [])
+            else:
+                # Pydantic ChapterDoc object
+                pairs = getattr(chapter_doc, "pairs", [])
+
+            # Count words from pairs
+            for pair in pairs:
+                # Handle both dictionary and Pydantic ParaPair object
+                if isinstance(pair, dict):
+                    modern_text = pair.get("modern", "")
+                else:
+                    modern_text = getattr(pair, "modern", "")
+
+                if modern_text:
+                    total_words += len(modern_text.split())
 
         return total_words
 
@@ -127,7 +143,7 @@ def calculate_pricing_node(state: FlowState) -> dict[str, Any]:
 
     pricing = state["pricing"]
 
-    print(f"\n✓ Pricing optimization complete")
+    print("\n✓ Pricing optimization complete")
     print(f"  Base price: ${pricing['base_price_usd']:.2f} USD")
     print(f"  Amazon royalty: {pricing['amazon']['royalty_tier']} (${pricing['amazon']['royalty_amount']:.2f} per sale)")
     print(f"  Google royalty: ${pricing['google']['royalty_amount']:.2f} per sale")

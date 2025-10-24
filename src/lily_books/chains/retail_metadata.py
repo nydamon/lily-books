@@ -14,7 +14,6 @@ from langchain_core.prompts import ChatPromptTemplate
 from lily_books.models import FlowState, RetailMetadata
 from lily_books.utils.llm_factory import create_llm_with_fallback
 
-
 # BISAC category reference
 BISAC_CATEGORIES = {
     "classics": {
@@ -141,11 +140,16 @@ Requirements:
                 }
             )
 
-            retail_metadata = RetailMetadata(**metadata_dict)
+            # Handle case where metadata might already be a RetailMetadata instance
+            if isinstance(metadata_dict, RetailMetadata):
+                retail_metadata = metadata_dict
+            else:
+                retail_metadata = RetailMetadata(**metadata_dict)
 
-            state["retail_metadata"] = retail_metadata
+            # Serialize to dict before storing in state (for LangGraph compatibility)
+            state["retail_metadata"] = retail_metadata.model_dump()
 
-            print(f"\n✓ Generated SEO metadata:")
+            print("\n✓ Generated SEO metadata:")
             print(f"  - Title variations: {len(retail_metadata.title_variations)}")
             print(f"  - Keywords: {len(retail_metadata.keywords)}")
             print(f"  - Amazon keywords: {len(retail_metadata.amazon_keywords)}")
@@ -158,15 +162,34 @@ Requirements:
         except Exception as e:
             print(f"⚠ Metadata generation failed, using fallback: {e}")
             # Fallback to basic metadata
-            state["retail_metadata"] = self._generate_fallback_metadata(state)
+            fallback_metadata = self._generate_fallback_metadata(state)
+            state["retail_metadata"] = fallback_metadata.model_dump()
             return state
 
     def _extract_sample_text(self, state: FlowState) -> str:
-        """Extract sample text from first chapter."""
+        """Extract sample text from first chapter.
+
+        Handles both Pydantic objects (attribute access) and dictionaries (key access).
+        """
         if state.get("rewritten") and len(state["rewritten"]) > 0:
             first_chapter = state["rewritten"][0]
-            if first_chapter.get("pairs") and len(first_chapter["pairs"]) > 0:
-                return first_chapter["pairs"][0].get("modern", "")
+
+            # Try dictionary access first
+            if isinstance(first_chapter, dict):
+                pairs = first_chapter.get("pairs", [])
+                if pairs and len(pairs) > 0:
+                    first_pair = pairs[0]
+                    if isinstance(first_pair, dict):
+                        return first_pair.get("modern", "")
+                    else:
+                        # Pydantic object
+                        return getattr(first_pair, "modern", "")
+            else:
+                # Pydantic ChapterDoc object
+                pairs = getattr(first_chapter, "pairs", [])
+                if pairs and len(pairs) > 0:
+                    first_pair = pairs[0]
+                    return getattr(first_pair, "modern", "")
 
         return "A modernized edition of a classic work of literature."
 
