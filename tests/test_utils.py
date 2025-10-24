@@ -49,9 +49,9 @@ class TestTokenCounting:
         """Test context window retrieval."""
         gpt_window = get_context_window("gpt-4o")
         claude_window = get_context_window("anthropic/claude-sonnet-4.5")
-        
+
         assert gpt_window == 128000
-        assert claude_window == 200000
+        assert claude_window == 1000000  # Claude Sonnet 4.5 has 1M context window
         
         # Test unknown model
         unknown_window = get_context_window("unknown-model")
@@ -393,7 +393,7 @@ class TestLLMFactory:
         
         anthropic_info = get_model_info("anthropic")
         assert anthropic_info["primary"] == "anthropic/claude-haiku-4.5"
-        assert anthropic_info["fallback"] == "claude-3-haiku"
+        assert anthropic_info["fallback"] == "anthropic/claude-sonnet-4.5"
         assert anthropic_info["provider"] == "anthropic"
         
         with pytest.raises(ValueError):

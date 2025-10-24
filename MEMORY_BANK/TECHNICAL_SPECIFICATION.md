@@ -303,21 +303,22 @@ GET /api/health
 #### Required
 ```env
 # API Keys
-OPENAI_API_KEY=sk-proj-...
-ANTHROPIC_API_KEY=sk-ant-...
-ELEVENLABS_API_KEY=...
+OPENROUTER_API_KEY=sk-or-v1-...  # Required: For all LLM operations via OpenRouter
+IDEOGRAM_API_KEY=...  # Required: For AI cover generation
 ```
 
 #### Optional
 ```env
-# Model Configuration
-OPENAI_MODEL=gpt-4o
-ANTHROPIC_MODEL=claude-sonnet-4-5-20250929
-ELEVENLABS_VOICE_ID=2EiwWnXFnvU5JabPnv8n
+# API Keys
+FISH_API_KEY=...  # Optional: Required only if ENABLE_AUDIO=true
 
-# Fallback Models
-OPENAI_FALLBACK_MODEL=gpt-4o-mini
-ANTHROPIC_FALLBACK_MODEL=claude-haiku-4-5-20251001
+# Model Configuration (OpenRouter format)
+OPENAI_MODEL=openai/gpt-4o-mini
+ANTHROPIC_MODEL=anthropic/claude-haiku-4.5
+
+# Fallback Models (OpenRouter format)
+OPENAI_FALLBACK_MODEL=openai/gpt-4o-mini
+ANTHROPIC_FALLBACK_MODEL=anthropic/claude-sonnet-4.5
 
 # Caching
 CACHE_ENABLED=true

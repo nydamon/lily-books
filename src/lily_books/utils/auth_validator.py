@@ -16,81 +16,8 @@ class AuthValidator:
         load_dotenv()
         self.results: Dict[str, Dict[str, Any]] = {}
     
-    def validate_openai(self) -> Dict[str, Any]:
-        """Validate OpenAI API authentication."""
-        try:
-            api_key = os.getenv('OPENAI_API_KEY')
-            if not api_key:
-                return {
-                    "status": "failed",
-                    "error": "OPENAI_API_KEY not found in environment",
-                    "details": "Set OPENAI_API_KEY in .env file"
-                }
-            
-            client = OpenAI(api_key=api_key)
-            
-            # Test GPT-5-mini with responses API
-            response = client.responses.create(
-                model='gpt-5-mini',
-                input=[
-                    {
-                        'role': 'user',
-                        'content': [
-                            {
-                                'type': 'input_text',
-                                'text': 'Say hello'
-                            }
-                        ]
-                    }
-                ],
-                text={
-                    'format': {
-                        'type': 'text'
-                    },
-                    'verbosity': 'medium'
-                },
-                reasoning={
-                    'effort': 'medium',
-                    'summary': 'auto'
-                },
-                tools=[],
-                store=True
-            )
-            
-            # Extract response text
-            response_text = ""
-            if response.output:
-                for item in response.output:
-                    if hasattr(item, 'content') and item.content:
-                        for content_item in item.content:
-                            if hasattr(content_item, 'text'):
-                                response_text = content_item.text
-                                break
-                        break
-            
-            if response_text:
-                return {
-                    "status": "success",
-                    "model": response.model,
-                    "response": response_text,
-                    "usage": response.usage.total_tokens if response.usage else 0
-                }
-            else:
-                return {
-                    "status": "failed",
-                    "error": "Empty response from GPT-5-mini",
-                    "details": "Model returned empty response"
-                }
-                
-        except Exception as e:
-            return {
-                "status": "failed",
-                "error": str(e),
-                "details": f"OpenAI API error: {type(e).__name__}"
-            }
-    
-    def validate_openrouter(self) -> Dict[str, Any]:
-        """Validate OpenRouter API authentication."""
+    def validate_openai_via_openrouter(self) -> Dict[str, Any]:
+        """Validate OpenAI models via OpenRouter API."""
         try:
             api_key = os.getenv('OPENROUTER_API_KEY')
             if not api_key:
@@ -99,31 +26,70 @@ class AuthValidator:
                     "error": "OPENROUTER_API_KEY not found in environment",
                     "details": "Set OPENROUTER_API_KEY in .env file"
                 }
-            
+
             client = OpenAI(
                 api_key=api_key,
                 base_url='https://openrouter.ai/api/v1'
             )
-            
-            # Test Anthropic Claude via OpenRouter
+
+            # Test OpenAI model via OpenRouter
+            openai_model = os.getenv('OPENAI_MODEL', 'openai/gpt-4o-mini')
             response = client.chat.completions.create(
-                model='anthropic/claude-haiku-4.5',
+                model=openai_model,
                 messages=[{'role': 'user', 'content': 'Say hello'}],
                 max_tokens=10
             )
-            
+
             return {
                 "status": "success",
                 "model": response.model,
                 "response": response.choices[0].message.content,
                 "usage": response.usage.total_tokens if response.usage else 0
             }
-            
+
         except Exception as e:
             return {
                 "status": "failed",
                 "error": str(e),
-                "details": f"OpenRouter API error: {type(e).__name__}"
+                "details": f"OpenRouter (OpenAI) API error: {type(e).__name__}"
+            }
+    
+    def validate_anthropic_via_openrouter(self) -> Dict[str, Any]:
+        """Validate Anthropic Claude models via OpenRouter API."""
+        try:
+            api_key = os.getenv('OPENROUTER_API_KEY')
+            if not api_key:
+                return {
+                    "status": "failed",
+                    "error": "OPENROUTER_API_KEY not found in environment",
+                    "details": "Set OPENROUTER_API_KEY in .env file"
+                }
+
+            client = OpenAI(
+                api_key=api_key,
+                base_url='https://openrouter.ai/api/v1'
+            )
+
+            # Test Anthropic model via OpenRouter
+            anthropic_model = os.getenv('ANTHROPIC_MODEL', 'anthropic/claude-haiku-4.5')
+            response = client.chat.completions.create(
+                model=anthropic_model,
+                messages=[{'role': 'user', 'content': 'Say hello'}],
+                max_tokens=10
+            )
+
+            return {
+                "status": "success",
+                "model": response.model,
+                "response": response.choices[0].message.content,
+                "usage": response.usage.total_tokens if response.usage else 0
+            }
+
+        except Exception as e:
+            return {
+                "status": "failed",
+                "error": str(e),
+                "details": f"OpenRouter (Anthropic) API error: {type(e).__name__}"
             }
     
     def validate_fish_audio(self) -> Dict[str, Any]:
@@ -159,19 +125,19 @@ class AuthValidator:
     def validate_all(self) -> Dict[str, Dict[str, Any]]:
         """Validate all authentication services."""
         logger.info("Starting authentication validation...")
-        
+
         self.results = {
-            "openai": self.validate_openai(),
-            "openrouter": self.validate_openrouter(),
+            "openai_via_openrouter": self.validate_openai_via_openrouter(),
+            "anthropic_via_openrouter": self.validate_anthropic_via_openrouter(),
             "fish_audio": self.validate_fish_audio()
         }
-        
+
         return self.results
     
     def print_results(self):
         """Print authentication validation results."""
         print("\n" + "="*60)
-        print("🔐 AUTHENTICATION VALIDATION RESULTS")
+        print("🔐 AUTHENTICATION VALIDATION RESULTS (OpenRouter Only)")
         print("="*60)
         
         for service, result in self.results.items():

@@ -196,18 +196,17 @@
 #### Required Environment Variables
 ```env
 # API Keys
-OPENAI_API_KEY=sk-proj-...
-ANTHROPIC_API_KEY=sk-ant-...
-ELEVENLABS_API_KEY=...
+OPENROUTER_API_KEY=sk-or-v1-...  # Required: For all LLM operations via OpenRouter
+FISH_API_KEY=...  # Optional: Required only if ENABLE_AUDIO=true
+IDEOGRAM_API_KEY=...  # Required: For AI cover generation
 
-# Model Configuration
-OPENAI_MODEL=gpt-4o
+# Model Configuration (OpenRouter format)
+OPENAI_MODEL=openai/gpt-4o-mini
 ANTHROPIC_MODEL=anthropic/claude-haiku-4.5
-ELEVENLABS_VOICE_ID=2EiwWnXFnvU5JabPnv8n
 
-# Fallback Models
-OPENAI_FALLBACK_MODEL=gpt-4o-mini
-ANTHROPIC_FALLBACK_MODEL=claude-3-haiku
+# Fallback Models (OpenRouter format)
+OPENAI_FALLBACK_MODEL=openai/gpt-4o-mini
+ANTHROPIC_FALLBACK_MODEL=anthropic/claude-sonnet-4.5
 
 # Caching
 CACHE_ENABLED=true

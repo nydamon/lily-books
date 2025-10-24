@@ -105,12 +105,9 @@ Create a `.env` file with the following variables:
 
 ```bash
 # API Keys
-OPENROUTER_API_KEY=your_openrouter_api_key_here  # For all LLM operations
-FISH_API_KEY=your_fish_audio_api_key_here  # For text-to-speech
-IDEOGRAM_API_KEY=your_ideogram_api_key_here  # Mandatory: Ideogram AI cover generation
-
-# Optional: OpenAI API key (not used in current pipeline)
-OPENAI_API_KEY=
+OPENROUTER_API_KEY=your_openrouter_api_key_here  # Required: For all LLM operations (GPT, Claude)
+FISH_API_KEY=your_fish_audio_api_key_here  # Optional: For text-to-speech (if ENABLE_AUDIO=true)
+IDEOGRAM_API_KEY=your_ideogram_api_key_here  # Required: Ideogram AI cover generation
 
 # Model configurations (OpenRouter format)
 OPENAI_MODEL=openai/gpt-4o-mini
