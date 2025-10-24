@@ -1,164 +1,458 @@
-"""Draft2Digital upload integration.
+"""Draft2Digital upload integration - FULL IMPLEMENTATION.
 
-STUB IMPLEMENTATION: Documents the API structure for Draft2Digital.
+Fully functional API integration for Draft2Digital distribution.
 
-For production use:
-1. Create Draft2Digital account (free)
-2. Generate API key from settings
-3. Implement API calls using requests library
+Features:
+- API key authentication
+- Book creation with metadata
+- EPUB manuscript upload
+- Cover image upload
+- Publishing to selected retailers
+- Free ISBN extraction
+- Comprehensive error handling
+- Retry logic with exponential backoff
 
-Draft2Digital provides the easiest API for ebook distribution.
 Docs: https://draft2digital.com/api/
 """
 
+import time
 from datetime import datetime
+from pathlib import Path
 from typing import Any
 
+import requests
+
+from lily_books.config import settings
 from lily_books.models import FlowState, UploadResult
 
 
+class Draft2DigitalAPI:
+    """Draft2Digital API client with full integration."""
+
+    BASE_URL = "https://www.draft2digital.com/api/v1"
+
+    def __init__(self, api_key: str | None = None):
+        """Initialize D2D API client.
+
+        Args:
+            api_key: D2D API key (falls back to settings.draft2digital_api_key)
+        """
+        self.api_key = api_key or settings.draft2digital_api_key
+
+        if not self.api_key:
+            raise ValueError(
+                "Draft2Digital API key required. Set DRAFT2DIGITAL_API_KEY in .env"
+            )
+
+        self.session = requests.Session()
+        self.session.headers.update({"Authorization": f"Bearer {self.api_key}"})
+
+    def create_book(
+        self,
+        title: str,
+        authors: list[str],
+        description: str,
+        keywords: list[str],
+        categories: list[str],
+        price_usd: float,
+        distribution_channels: dict[str, bool],
+    ) -> dict:
+        """
+        Create a new book entry in Draft2Digital.
+
+        Args:
+            title: Book title
+            authors: List of author names
+            description: Book description
+            keywords: SEO keywords
+            categories: BISAC category codes
+            price_usd: Price in USD
+            distribution_channels: Dict of retailer: enabled
+
+        Returns:
+            Dict with book_id and free_isbn
+
+        Raises:
+            requests.HTTPError: If API request fails
+        """
+        payload = {
+            "title": title,
+            "authors": authors,
+            "description": description,
+            "keywords": ",".join(keywords),
+            "categories": categories,
+            "language": "en",
+            "price": {"amount": price_usd, "currency": "USD"},
+            "distribution": distribution_channels,
+        }
+
+        response = self._request_with_retry(
+            "POST", f"{self.BASE_URL}/books", json=payload
+        )
+
+        data = response.json()
+
+        book_id = data["book"]["id"]
+        free_isbn = data["book"].get("isbn")  # D2D assigns free ISBN
+
+        print(f"  ✓ Book created (ID: {book_id}, ISBN: {free_isbn})")
+
+        return {"book_id": book_id, "isbn": free_isbn, "response": data}
+
+    def upload_manuscript(self, book_id: str, epub_path: Path) -> dict:
+        """
+        Upload EPUB manuscript to Draft2Digital.
+
+        Args:
+            book_id: D2D book ID
+            epub_path: Path to EPUB file
+
+        Returns:
+            API response data
+
+        Raises:
+            requests.HTTPError: If upload fails
+            FileNotFoundError: If EPUB doesn't exist
+        """
+        if not epub_path.exists():
+            raise FileNotFoundError(f"EPUB not found: {epub_path}")
+
+        # D2D expects multipart/form-data
+        with open(epub_path, "rb") as f:
+            files = {
+                "file": (epub_path.name, f, "application/epub+zip")
+            }
+
+            # Remove Content-Type from headers for multipart
+            headers = {"Authorization": f"Bearer {self.api_key}"}
+
+            response = self._request_with_retry(
+                "POST",
+                f"{self.BASE_URL}/books/{book_id}/manuscript",
+                files=files,
+                headers=headers,
+            )
+
+        print(f"  ✓ EPUB uploaded: {epub_path.name}")
+
+        return response.json()
+
+    def upload_cover(self, book_id: str, cover_path: Path) -> dict:
+        """
+        Upload cover image to Draft2Digital.
+
+        Args:
+            book_id: D2D book ID
+            cover_path: Path to cover image (JPEG or PNG)
+
+        Returns:
+            API response data
+
+        Raises:
+            requests.HTTPError: If upload fails
+            FileNotFoundError: If cover doesn't exist
+        """
+        if not cover_path.exists():
+            raise FileNotFoundError(f"Cover not found: {cover_path}")
+
+        # Determine MIME type
+        mime_type = "image/jpeg" if cover_path.suffix.lower() in [".jpg", ".jpeg"] else "image/png"
+
+        with open(cover_path, "rb") as f:
+            files = {
+                "file": (cover_path.name, f, mime_type)
+            }
+
+            headers = {"Authorization": f"Bearer {self.api_key}"}
+
+            response = self._request_with_retry(
+                "POST",
+                f"{self.BASE_URL}/books/{book_id}/cover",
+                files=files,
+                headers=headers,
+            )
+
+        print(f"  ✓ Cover uploaded: {cover_path.name}")
+
+        return response.json()
+
+    def publish_book(self, book_id: str) -> dict:
+        """
+        Publish book to selected retailers.
+
+        Args:
+            book_id: D2D book ID
+
+        Returns:
+            API response data
+
+        Raises:
+            requests.HTTPError: If publishing fails
+        """
+        response = self._request_with_retry(
+            "POST", f"{self.BASE_URL}/books/{book_id}/publish"
+        )
+
+        print(f"  ✓ Published to retailers")
+
+        return response.json()
+
+    def get_book_status(self, book_id: str) -> dict:
+        """
+        Get book status and details.
+
+        Args:
+            book_id: D2D book ID
+
+        Returns:
+            Book details including ISBN, distribution status, etc.
+        """
+        response = self._request_with_retry(
+            "GET", f"{self.BASE_URL}/books/{book_id}"
+        )
+
+        return response.json()
+
+    def _request_with_retry(
+        self,
+        method: str,
+        url: str,
+        max_retries: int = 3,
+        initial_delay: float = 2.0,
+        **kwargs,
+    ) -> requests.Response:
+        """
+        Make HTTP request with exponential backoff retry.
+
+        Args:
+            method: HTTP method (GET, POST, etc.)
+            url: Request URL
+            max_retries: Maximum retry attempts
+            initial_delay: Initial retry delay in seconds
+            **kwargs: Additional arguments for requests
+
+        Returns:
+            Response object
+
+        Raises:
+            requests.HTTPError: If all retries fail
+        """
+        delay = initial_delay
+
+        for attempt in range(max_retries + 1):
+            try:
+                response = self.session.request(method, url, timeout=60, **kwargs)
+                response.raise_for_status()
+                return response
+
+            except requests.HTTPError as e:
+                if attempt == max_retries:
+                    # Final attempt failed
+                    raise
+
+                status_code = e.response.status_code if e.response else 0
+
+                # Don't retry client errors (4xx) except 429 (rate limit)
+                if 400 <= status_code < 500 and status_code != 429:
+                    raise
+
+                # Retry on server errors (5xx) or rate limit (429)
+                print(
+                    f"  ⚠ Request failed (attempt {attempt + 1}/{max_retries + 1}): {e}"
+                )
+                print(f"  ⏳ Retrying in {delay:.1f}s...")
+                time.sleep(delay)
+                delay *= 2  # Exponential backoff
+
+            except requests.RequestException as e:
+                if attempt == max_retries:
+                    raise
+
+                print(
+                    f"  ⚠ Network error (attempt {attempt + 1}/{max_retries + 1}): {e}"
+                )
+                print(f"  ⏳ Retrying in {delay:.1f}s...")
+                time.sleep(delay)
+                delay *= 2
+
+
 class Draft2DigitalUploader:
-    """Stub uploader for Draft2Digital."""
+    """Full Draft2Digital uploader implementation."""
+
+    # Default distribution channels
+    DEFAULT_DISTRIBUTION = {
+        "apple": True,
+        "kobo": True,
+        "barnes_noble": True,
+        "scribd": True,
+        "overdrive": True,  # Library distribution
+        "tolino": True,  # EU market
+        "vivlio": True,
+        "palace": True,
+        "bibliotheca": True,
+        "twentyfour_symbols": False,  # Often requires separate agreement
+    }
+
+    def __init__(self):
+        """Initialize uploader."""
+        self.api = None
 
     def upload(self, state: FlowState) -> UploadResult:
         """
-        Upload to Draft2Digital.
+        Upload book to Draft2Digital.
 
-        STUB: This is a placeholder implementation.
-        Returns instructions for setting up Draft2Digital integration.
+        Full implementation with:
+        - Book creation
+        - EPUB upload
+        - Cover upload
+        - Publishing
+        - Free ISBN extraction
         """
 
-        # Find universal edition (used for D2D)
-        universal_edition = None
-        if state.get("edition_files"):
-            for edition in state["edition_files"]:
-                if edition["retailer"] == "draft2digital":
-                    universal_edition = edition
-                    break
+        try:
+            # Initialize API client
+            self.api = Draft2DigitalAPI()
 
-        if not universal_edition:
+        except ValueError as e:
+            # API key not configured
             return UploadResult(
                 retailer="draft2digital",
                 status="error",
-                message="No D2D edition found",
+                message="D2D API key not configured",
+                error_details=str(e),
                 timestamp=datetime.now().isoformat(),
             )
 
-        # In a real implementation, this would:
-        # 1. Authenticate with D2D API key
-        # 2. Create book entry
-        # 3. Upload EPUB manuscript
-        # 4. Upload cover
-        # 5. Set pricing and distribution channels
-        # 6. Publish to selected retailers
-        # 7. Return D2D book ID and free ISBN
+        try:
+            # Find universal edition
+            universal_edition = self._find_universal_edition(state)
 
-        setup_instructions = """
-Draft2Digital API Setup:
+            if not universal_edition:
+                return UploadResult(
+                    retailer="draft2digital",
+                    status="error",
+                    message="No universal edition found for D2D",
+                    timestamp=datetime.now().isoformat(),
+                )
 
-1. CREATE ACCOUNT:
-   - Sign up at https://draft2digital.com/
-   - Free account, instant access
-   - No approval required
+            # Extract metadata
+            pub_meta = state.get("publishing_metadata", {})
+            retail_meta = state.get("retail_metadata", {})
+            pricing = state.get("pricing", {})
 
-2. GENERATE API KEY:
-   - Go to Settings → API Access
-   - Generate new API key
-   - Set DRAFT2DIGITAL_API_KEY=your_api_key
+            title = pub_meta.get("title", "Untitled")
+            authors = [pub_meta.get("original_author", "Unknown")]
+            description = retail_meta.get("description_long", "")
+            keywords = retail_meta.get("keywords", [])[:20]  # D2D accepts many
+            categories = retail_meta.get("bisac_categories", [])
+            price_usd = pricing.get("base_price_usd", 2.99)
 
-3. INSTALL DEPENDENCIES:
-   - pip install requests
+            # Get cover path
+            cover_path = Path(state.get("cover_path", ""))
 
-4. API USAGE (Python):
-   import requests
+            print(f"\n  📚 Uploading: {title}")
+            print(f"  💰 Price: ${price_usd:.2f}")
 
-   headers = {{
-       "Authorization": "Bearer YOUR_API_KEY",
-       "Content-Type": "application/json"
-   }}
+            # Step 1: Create book entry
+            print(f"\n  1️⃣ Creating book entry...")
+            book_result = self.api.create_book(
+                title=title,
+                authors=authors,
+                description=description,
+                keywords=keywords,
+                categories=categories,
+                price_usd=price_usd,
+                distribution_channels=self.DEFAULT_DISTRIBUTION,
+            )
 
-   # Create book
-   book_data = {{
-       "title": "{title}",
-       "authors": ["{author}"],
-       "description": "{description}",
-       "price": {{"amount": {price}, "currency": "USD"}},
-       "distribution": {{
-           "apple": True,
-           "kobo": True,
-           "barnes_noble": True,
-           "scribd": True,
-           "overdrive": True
-       }}
-   }}
+            book_id = book_result["book_id"]
+            free_isbn = book_result["isbn"]
 
-   response = requests.post(
-       "https://www.draft2digital.com/api/v1/books",
-       headers=headers,
-       json=book_data
-   )
+            # Step 2: Upload EPUB
+            print(f"\n  2️⃣ Uploading EPUB...")
+            epub_path = Path(universal_edition["file_path"])
+            self.api.upload_manuscript(book_id, epub_path)
 
-   book_id = response.json()["book"]["id"]
-   free_isbn = response.json()["book"]["isbn"]  # D2D assigns free ISBN
+            # Step 3: Upload cover
+            print(f"\n  3️⃣ Uploading cover...")
+            if cover_path.exists():
+                self.api.upload_cover(book_id, cover_path)
+            else:
+                print(f"  ⚠ Cover not found, skipping")
 
-   # Upload EPUB
-   with open("{epub_file}", "rb") as f:
-       files = {{"file": f}}
-       requests.post(
-           f"https://www.draft2digital.com/api/v1/books/{{book_id}}/manuscript",
-           headers={{"Authorization": "Bearer YOUR_API_KEY"}},
-           files=files
-       )
+            # Step 4: Publish
+            print(f"\n  4️⃣ Publishing to retailers...")
+            self.api.publish_book(book_id)
 
-   # Upload cover
-   with open("{cover_file}", "rb") as f:
-       files = {{"file": f}}
-       requests.post(
-           f"https://www.draft2digital.com/api/v1/books/{{book_id}}/cover",
-           headers={{"Authorization": "Bearer YOUR_API_KEY"}},
-           files=files
-       )
+            # Step 5: Get final status
+            book_status = self.api.get_book_status(book_id)
 
-   # Publish
-   requests.post(
-       f"https://www.draft2digital.com/api/v1/books/{{book_id}}/publish",
-       headers=headers
-   )
+            # Generate universal book link
+            universal_link = f"https://books2read.com/u/{book_id}"
 
-5. DISTRIBUTION:
-   - Apple Books: 7-14 days
-   - Kobo: 1-3 days
-   - Barnes & Noble: 5-10 days
-   - Scribd, OverDrive, 24symbols: varies
+            print(f"\n  ✅ Upload complete!")
+            print(f"  📖 Book ID: {book_id}")
+            print(f"  🔖 Free ISBN: {free_isbn}")
+            print(f"  🔗 Universal link: {universal_link}")
 
-6. UNIVERSAL BOOK LINK:
-   - D2D creates books2read.com link
-   - One link for all retailers
+            return UploadResult(
+                retailer="draft2digital",
+                status="success",
+                message=f"Successfully uploaded to Draft2Digital",
+                identifier_assigned=free_isbn,
+                preview_link=None,  # D2D doesn't provide preview links
+                universal_book_link=universal_link,
+                timestamp=datetime.now().isoformat(),
+            )
 
-For detailed API docs:
-https://draft2digital.com/api/
-""".format(
-            title=state.get("publishing_metadata", {}).get("title", ""),
-            author=state.get("publishing_metadata", {}).get("original_author", ""),
-            description=state.get("retail_metadata", {}).get("description_short", ""),
-            price=state.get("pricing", {}).get("base_price_usd", 2.99),
-            epub_file=universal_edition["file_path"],
-            cover_file=state.get("cover_path", ""),
-        )
+        except requests.HTTPError as e:
+            error_msg = f"D2D API error: {e.response.status_code}"
+            error_details = e.response.text if e.response else str(e)
 
-        return UploadResult(
-            retailer="draft2digital",
-            status="pending",
-            message="Draft2Digital API setup required. See instructions.",
-            error_details=setup_instructions,
-            timestamp=datetime.now().isoformat(),
-        )
+            print(f"\n  ❌ Upload failed: {error_msg}")
+            print(f"  Details: {error_details}")
+
+            return UploadResult(
+                retailer="draft2digital",
+                status="error",
+                message=error_msg,
+                error_details=error_details,
+                timestamp=datetime.now().isoformat(),
+            )
+
+        except Exception as e:
+            print(f"\n  ❌ Unexpected error: {str(e)}")
+
+            return UploadResult(
+                retailer="draft2digital",
+                status="error",
+                message=f"Upload failed: {str(e)}",
+                error_details=str(e),
+                timestamp=datetime.now().isoformat(),
+            )
+
+    def _find_universal_edition(self, state: FlowState) -> dict | None:
+        """Find the universal edition for D2D upload."""
+        if not state.get("edition_files"):
+            return None
+
+        for edition in state["edition_files"]:
+            if edition["retailer"] == "draft2digital":
+                return edition
+
+        # Fallback: Look for universal in filename
+        for edition in state["edition_files"]:
+            if "universal" in edition["file_path"].lower():
+                return edition
+
+        return None
 
 
 def upload_to_d2d_node(state: FlowState) -> dict[str, Any]:
-    """LangGraph node for Draft2Digital upload."""
+    """LangGraph node for Draft2Digital upload - FULL IMPLEMENTATION."""
 
-    print("\n📤 Draft2Digital Upload (API)")
+    print("\n" + "=" * 70)
+    print("📤 Draft2Digital Upload (API)".center(70))
     print("=" * 70)
 
     uploader = Draft2DigitalUploader()
@@ -171,9 +465,13 @@ def upload_to_d2d_node(state: FlowState) -> dict[str, Any]:
     upload_status = state.get("upload_status", {})
     upload_status["draft2digital"] = result.status
 
-    # Display setup instructions
-    if result.status == "pending":
-        print(result.error_details)
+    if result.status == "success":
+        print(f"\n✅ Draft2Digital upload successful!")
+        print(f"📦 Distribution to: Apple Books, Kobo, B&N, Scribd, OverDrive, etc.")
+        print(f"⏱️  Timeline: Apple Books (7-14 days), Kobo (1-3 days)")
+    else:
+        print(f"\n❌ Draft2Digital upload failed")
+        print(f"Error: {result.message}")
 
     print("=" * 70 + "\n")
 
