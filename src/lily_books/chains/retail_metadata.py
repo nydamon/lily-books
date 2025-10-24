@@ -141,9 +141,12 @@ Requirements:
                 }
             )
 
-            retail_metadata = RetailMetadata(**metadata_dict)
+            if isinstance(metadata_dict, RetailMetadata):
+                retail_metadata = metadata_dict
+            else:
+                retail_metadata = RetailMetadata(**metadata_dict)
 
-            state["retail_metadata"] = retail_metadata
+            state["retail_metadata"] = retail_metadata.model_dump()
 
             print(f"\n✓ Generated SEO metadata:")
             print(f"  - Title variations: {len(retail_metadata.title_variations)}")
@@ -158,15 +161,27 @@ Requirements:
         except Exception as e:
             print(f"⚠ Metadata generation failed, using fallback: {e}")
             # Fallback to basic metadata
-            state["retail_metadata"] = self._generate_fallback_metadata(state)
+            fallback_metadata = self._generate_fallback_metadata(state)
+            state["retail_metadata"] = fallback_metadata.model_dump()
             return state
 
     def _extract_sample_text(self, state: FlowState) -> str:
         """Extract sample text from first chapter."""
-        if state.get("rewritten") and len(state["rewritten"]) > 0:
-            first_chapter = state["rewritten"][0]
-            if first_chapter.get("pairs") and len(first_chapter["pairs"]) > 0:
-                return first_chapter["pairs"][0].get("modern", "")
+        rewritten = state.get("rewritten") or []
+        if rewritten:
+            first_chapter = rewritten[0]
+            pairs = getattr(first_chapter, "pairs", None)
+            if pairs is None and isinstance(first_chapter, dict):
+                pairs = first_chapter.get("pairs")
+
+            if pairs:
+                first_pair = pairs[0]
+                modern_text = getattr(first_pair, "modern", None)
+                if modern_text is None and isinstance(first_pair, dict):
+                    modern_text = first_pair.get("modern")
+
+                if modern_text:
+                    return modern_text
 
         return "A modernized edition of a classic work of literature."
 
