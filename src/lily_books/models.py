@@ -69,6 +69,24 @@ class CoverError(PipelineError):
     pass
 
 
+class PublishingError(PipelineError):
+    """Raised when publishing/distribution fails."""
+
+    pass
+
+
+class UploadError(PipelineError):
+    """Raised when retailer upload fails."""
+
+    pass
+
+
+class ValidationError(PipelineError):
+    """Raised when validation fails."""
+
+    pass
+
+
 class QualityControl(BaseModel):
     """Per-book quality control overrides."""
 
@@ -302,6 +320,99 @@ class CoverDesign(BaseModel):
     format: str = "png"
 
 
+class IdentifierInfo(BaseModel):
+    """Identifier information for book editions."""
+
+    identifier_type: Literal["ASIN", "ISBN", "GOOGLE_ID"]
+    identifier_value: str | None = None  # May be auto-assigned at upload
+    source: str  # "amazon_auto_assign", "draft2digital_free_isbn", "google_auto_assign"
+    cost: float = 0.0
+    exclusive: bool = False  # If this identifier locks the file to one retailer
+    notes: str | None = None
+
+
+class EditionInfo(BaseModel):
+    """Edition-specific information (Kindle vs Universal)."""
+
+    name: str  # "Kindle Edition", "Universal Edition"
+    retailer: str  # "amazon_kdp", "draft2digital", "google_play"
+    identifier: IdentifierInfo
+    file_suffix: str  # "_kindle", "_universal"
+    file_path: str | None = None  # Path to edition-specific EPUB
+    exclusive_to: str | None = None  # Retailer exclusivity
+    distribution_to: list[str] = Field(default_factory=list)  # For aggregators like D2D
+    publisher_of_record: str | None = None  # For D2D free ISBN
+
+
+class RetailMetadata(BaseModel):
+    """SEO-optimized metadata for retail distribution."""
+
+    title_variations: list[str] = Field(
+        default_factory=list, description="Title variations for A/B testing"
+    )
+    subtitle: str | None = None
+    description_short: str = Field(
+        ..., description="150-char elevator pitch for search results"
+    )
+    description_long: str = Field(
+        ..., description="800-1500 word detailed description with HTML formatting"
+    )
+    keywords: list[str] = Field(
+        default_factory=list, description="20 SEO keywords customers search"
+    )
+    bisac_categories: list[str] = Field(
+        default_factory=list, description="BISAC category codes"
+    )
+    amazon_keywords: list[str] = Field(
+        default_factory=list, description="7 Amazon-specific keywords"
+    )
+    comp_titles: list[dict[str, str]] = Field(
+        default_factory=list, description="Competitive/comparable titles"
+    )
+    age_rating: str | None = None
+    series_info: dict | None = None
+
+
+class PricingInfo(BaseModel):
+    """Pricing information per retailer."""
+
+    base_price_usd: float
+    amazon: dict = Field(
+        default_factory=lambda: {"usd": 2.99, "royalty_tier": "70%", "royalty_amount": 2.09}
+    )
+    google: dict = Field(
+        default_factory=lambda: {"usd": 2.99, "note": "Google converts to local currency"}
+    )
+    apple_via_d2d: dict = Field(
+        default_factory=lambda: {"usd": 2.99, "note": "D2D handles currency conversion"}
+    )
+    reasoning: str | None = None
+
+
+class UploadResult(BaseModel):
+    """Result from uploading to a retailer."""
+
+    retailer: str
+    status: Literal["success", "error", "pending"]
+    message: str
+    identifier_assigned: str | None = None  # ASIN, ISBN, Google ID assigned
+    preview_link: str | None = None
+    universal_book_link: str | None = None  # For D2D books2read link
+    error_details: str | None = None
+    timestamp: str | None = None
+
+
+class ValidationReport(BaseModel):
+    """Validation report for EPUB or metadata."""
+
+    validation_type: Literal["epub", "metadata", "cover"]
+    passed: bool
+    errors: list[dict] = Field(default_factory=list)
+    warnings: list[dict] = Field(default_factory=list)
+    validator: str  # "epubcheck", "manual", "llm"
+    timestamp: str | None = None
+
+
 class FlowState(TypedDict):
     """LangGraph state for the pipeline."""
 
@@ -319,7 +430,24 @@ class FlowState(TypedDict):
     audio_files: list[dict] | None  # Audio files from TTS
     mastered_files: list[dict] | None  # Mastered audio files
 
-    # NEW FIELDS:
+    # Publishing metadata (basic)
     publishing_metadata: PublishingMetadata | None
     cover_design: CoverDesign | None
     cover_path: str | None
+
+    # NEW: Distribution & Publishing fields
+    target_retailers: list[str] | None  # ["amazon", "google", "draft2digital"]
+    identifiers: dict | None  # Edition identifier assignments
+    requires_two_editions: bool | None  # Kindle + Universal editions
+    edition_metadata: list[dict] | None  # Edition-specific metadata
+    edition_files: list[dict] | None  # Edition-specific EPUB files
+    retail_metadata: RetailMetadata | dict[str, Any] | None  # SEO-optimized metadata
+    pricing: PricingInfo | None  # Pricing per retailer
+    upload_status: dict | None  # {retailer: status}
+    upload_results: dict | None  # {retailer: UploadResult}
+    errors: list[dict] | None  # Accumulated errors
+    metadata_validated: bool | None  # Metadata validation passed
+    epub_validated: bool | None  # EPUB validation passed
+    human_approved: bool | None  # Human review approval
+    human_feedback: str | None  # Feedback if not approved
+    validation_reports: list[ValidationReport] | None  # Validation reports
