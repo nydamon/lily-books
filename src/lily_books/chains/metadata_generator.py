@@ -1,14 +1,14 @@
 """LLM chain for generating publishing metadata."""
 
-import logging
 import json
-from typing import List, Dict, Any
-from langchain_core.prompts import ChatPromptTemplate
+import logging
+
 from langchain_core.output_parsers import JsonOutputParser
+from langchain_core.prompts import ChatPromptTemplate
 from langchain_openai import ChatOpenAI
 
-from ..models import PublishingMetadata, ChapterDoc
 from ..config import get_config
+from ..models import ChapterDoc, PublishingMetadata
 from ..observability import ChainTraceCallback
 from ..tools.isbn_generator import generate_isbns_for_book
 from ..utils.fail_fast import fail_fast_on_exception
@@ -19,8 +19,11 @@ logger = logging.getLogger(__name__)
 metadata_parser = JsonOutputParser()
 
 # Metadata generation prompt
-METADATA_PROMPT = ChatPromptTemplate.from_messages([
-    ("system", """You are an expert book marketer and publisher specializing in modernized classic literature.
+METADATA_PROMPT = ChatPromptTemplate.from_messages(
+    [
+        (
+            "system",
+            """You are an expert book marketer and publisher specializing in modernized classic literature.
 
 Your task is to create compelling, SEO-optimized metadata for a modernized edition of a public domain classic.
 
@@ -54,8 +57,11 @@ IMPORTANT: Return ONLY a valid JSON object with the following exact structure (n
   "cover_prompt": "string"
 }}
 
-Generate professional, compelling metadata that will attract readers while accurately representing the modernized edition."""),
-    ("user", """Generate publishing metadata for this book:
+Generate professional, compelling metadata that will attract readers while accurately representing the modernized edition.""",
+        ),
+        (
+            "user",
+            """Generate publishing metadata for this book:
 
 Original Title: {original_title}
 Original Author: {original_author}
@@ -97,36 +103,36 @@ Requirements:
 
    Example BAD cover_prompt: "A classic book cover with elegant design" (too generic, no book-specific details)
 
-Focus on educational value, accessibility, and preserving literary merit. Make it compelling and market-ready!""")
-])
+Focus on educational value, accessibility, and preserving literary merit. Make it compelling and market-ready!""",
+        ),
+    ]
+)
+
 
 # Build chain with retry (lazy initialization)
 def get_metadata_chain():
     """Get metadata generation chain with lazy initialization."""
     import os
+
     from dotenv import load_dotenv
+
     load_dotenv()
-    
+
     config = get_config()
     logger.info(f"Creating metadata LLM with model: {config.openai_model}")
     # Use GPT-5-mini if configured
     # Use OpenRouter for all models
     llm = ChatOpenAI(
         model=config.openai_model,
-        api_key=os.getenv('OPENROUTER_API_KEY'),
+        api_key=os.getenv("OPENROUTER_API_KEY"),
         base_url="https://openrouter.ai/api/v1",
         temperature=1.0,
-        max_completion_tokens=2000
+        max_completion_tokens=2000,
     ).with_retry(
-        stop_after_attempt=config.llm_max_retries,
-        wait_exponential_jitter=True
+        stop_after_attempt=config.llm_max_retries, wait_exponential_jitter=True
     )
-    
-    return (
-        METADATA_PROMPT
-        | llm
-        | metadata_parser
-    )
+
+    return METADATA_PROMPT | llm | metadata_parser
 
 
 def generate_metadata(
@@ -134,11 +140,11 @@ def generate_metadata(
     original_author: str,
     source: str,
     publisher: str,
-    chapters: List[ChapterDoc],
-    slug: str = None
+    chapters: list[ChapterDoc],
+    slug: str = None,
 ) -> PublishingMetadata:
     """Generate publishing metadata using LLM.
-    
+
     Args:
         original_title: Original book title
         original_author: Original author name
@@ -146,7 +152,7 @@ def generate_metadata(
         publisher: Publisher name
         chapters: List of chapter documents
         slug: Optional slug for callbacks
-        
+
     Returns:
         PublishingMetadata object with generated content
     """
@@ -157,25 +163,28 @@ def generate_metadata(
         # to understand the book's time period, setting, themes, and characters
         sample_paragraphs = chapters[0].pairs[:15]
         sample_text = "\n\n".join([p.modern for p in sample_paragraphs])[:2000]
-    
+
     # Prepare callbacks
     callbacks = []
     if slug:
         callbacks = [ChainTraceCallback(slug)]
-    
+
     # Invoke chain
     try:
         # Get chain with lazy initialization
         chain = get_metadata_chain()
 
-        raw_result = chain.invoke({
-            "original_title": original_title,
-            "original_author": original_author,
-            "source": source,
-            "publisher": publisher,
-            "sample_text": sample_text,
-            "chapter_count": len(chapters)
-        }, config={"callbacks": callbacks})
+        raw_result = chain.invoke(
+            {
+                "original_title": original_title,
+                "original_author": original_author,
+                "source": source,
+                "publisher": publisher,
+                "sample_text": sample_text,
+                "chapter_count": len(chapters),
+            },
+            config={"callbacks": callbacks},
+        )
 
         # Parse JSON result into PublishingMetadata
         # JsonOutputParser should return a dict, but handle edge cases
@@ -186,33 +195,39 @@ def generate_metadata(
                 raw_result = json.loads(raw_result)
             except json.JSONDecodeError:
                 # Try to fix semicolon errors
-                fixed_json = raw_result.replace(';"', ',"').replace(';\n', ',\n')
+                fixed_json = raw_result.replace(';"', ',"').replace(";\n", ",\n")
                 raw_result = json.loads(fixed_json)
 
         if isinstance(raw_result, dict):
             # Check if wrapped in properties key
-            if "properties" in raw_result and isinstance(raw_result["properties"], dict):
+            if "properties" in raw_result and isinstance(
+                raw_result["properties"], dict
+            ):
                 metadata_dict = raw_result["properties"]
             else:
                 metadata_dict = raw_result
         else:
-            raise ValueError(f"Expected dict from metadata chain, got {type(raw_result)}")
+            raise ValueError(
+                f"Expected dict from metadata chain, got {type(raw_result)}"
+            )
 
         # Convert to PublishingMetadata object
         result = PublishingMetadata(**metadata_dict)
 
         # Generate ISBNs
-        isbns = generate_isbns_for_book(slug or original_title.lower().replace(' ', '-'), original_title)
+        isbns = generate_isbns_for_book(
+            slug or original_title.lower().replace(" ", "-"), original_title
+        )
         result.isbn_ebook = isbns["ebook_isbn"]
         result.isbn_audiobook = isbns["audiobook_isbn"]
 
         logger.info(f"Generated metadata for {original_title}")
         return result
-        
+
     except Exception as e:
         # Fail fast on any exception
-        fail_fast_on_exception(e, f"metadata_generator")
-        
+        fail_fast_on_exception(e, "metadata_generator")
+
         logger.error(f"Metadata generation failed: {e}")
         # Return minimal metadata as fallback
         return PublishingMetadata(
@@ -223,5 +238,5 @@ def generate_metadata(
             short_description=f"A modernized edition of {original_title} by {original_author}.",
             long_description=f"This modernized student edition of {original_title} updates archaic language for contemporary readers while preserving the original story and meaning.",
             keywords=["classic literature", "modernized", "student edition"],
-            categories=["Literature & Fiction", "Classics"]
+            categories=["Literature & Fiction", "Classics"],
         )

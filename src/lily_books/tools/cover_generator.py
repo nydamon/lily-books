@@ -3,14 +3,15 @@
 import logging
 from pathlib import Path
 
+from ..config import get_config, get_project_paths
 from ..models import CoverDesign, PublishingMetadata
-from ..config import get_project_paths, get_config
 
 logger = logging.getLogger(__name__)
 
+
 def generate_cover_prompt(metadata: PublishingMetadata) -> str:
     """Generate Ideogram prompt for book cover."""
-    
+
     # Style mappings
     style_prompts = {
         "classic": "elegant vintage book cover design, ornate borders, classic typography, muted earth tones, literary feel",
@@ -19,11 +20,11 @@ def generate_cover_prompt(metadata: PublishingMetadata) -> str:
         "whimsical classic": "playful vintage-inspired cover, hand-drawn elements, soft pastels, charming illustrations, child-friendly",
         "academic": "scholarly book cover, clean typography, muted colors, professional layout, educational focus",
         "artistic": "creative cover design, abstract elements, artistic typography, unique color combinations, expressive",
-        "nostalgic": "warm, nostalgic book cover, sepia tones, vintage photography elements, sentimental feel"
+        "nostalgic": "warm, nostalgic book cover, sepia tones, vintage photography elements, sentimental feel",
     }
-    
+
     style = style_prompts.get(metadata.cover_style, style_prompts["classic"])
-    
+
     prompt = f"""Professional book cover design for "{metadata.title}".
 
 Style: {style}
@@ -44,14 +45,12 @@ Requirements:
 - Suitable for both ebook and print
 
 Art style: {style}"""
-    
+
     return prompt
 
 
 def generate_cover_with_ideogram(
-    metadata: PublishingMetadata,
-    slug: str,
-    max_attempts: int = 3
+    metadata: PublishingMetadata, slug: str, max_attempts: int = 3
 ) -> Path:
     """Generate cover using Ideogram API with validation and retry.
 
@@ -67,6 +66,7 @@ def generate_cover_with_ideogram(
         Path to validated cover image
     """
     import requests
+
     from ..utils.cover_validator import validate_cover_image
 
     config = get_config()
@@ -118,7 +118,9 @@ The cover should immediately communicate the book's era, themes, and atmosphere 
 
     # Retry loop with validation
     for attempt in range(1, max_attempts + 1):
-        logger.info(f"Generating cover with Ideogram API (attempt {attempt}/{max_attempts})...")
+        logger.info(
+            f"Generating cover with Ideogram API (attempt {attempt}/{max_attempts})..."
+        )
         logger.info(f"Book-specific cover prompt: {metadata.cover_prompt}")
         logger.debug(f"Full Ideogram prompt: {prompt}")
 
@@ -129,7 +131,7 @@ The cover should immediately communicate the book's era, themes, and atmosphere 
                 "https://api.ideogram.ai/generate",
                 headers={
                     "Api-Key": config.ideogram_api_key,
-                    "Content-Type": "application/json"
+                    "Content-Type": "application/json",
                 },
                 json={
                     "image_request": {
@@ -137,10 +139,10 @@ The cover should immediately communicate the book's era, themes, and atmosphere 
                         "aspect_ratio": "ASPECT_2_3",  # Portrait for book cover
                         "model": "V_2",  # Latest model with best text rendering
                         "magic_prompt_option": "AUTO",  # Let Ideogram enhance the prompt
-                        "style_type": "DESIGN"  # Design style for professional covers
+                        "style_type": "DESIGN",  # Design style for professional covers
                     }
                 },
-                timeout=60
+                timeout=60,
             )
 
             response.raise_for_status()
@@ -165,19 +167,21 @@ The cover should immediately communicate the book's era, themes, and atmosphere 
                     cover_path=cover_path,
                     expected_title=metadata.title,
                     expected_author=metadata.author,
-                    expected_edition="Modernized Student Edition"
+                    expected_edition="Modernized Student Edition",
                 )
 
-                if validation['is_valid']:
+                if validation["is_valid"]:
                     logger.info(f"✓ Cover validation PASSED (attempt {attempt})")
                     return cover_path
-                elif validation['should_retry'] and attempt < max_attempts:
-                    logger.warning(f"✗ Cover validation FAILED (attempt {attempt}/{max_attempts}): {validation['errors']}")
-                    logger.info(f"Retrying cover generation with refined prompt...")
+                elif validation["should_retry"] and attempt < max_attempts:
+                    logger.warning(
+                        f"✗ Cover validation FAILED (attempt {attempt}/{max_attempts}): {validation['errors']}"
+                    )
+                    logger.info("Retrying cover generation with refined prompt...")
                     # Add negative prompt feedback for next attempt
-                    if 'errors' in validation and validation['errors']:
-                        prompt += f"\n\nIMPORTANT: Previous attempt had these issues - avoid them:\n"
-                        for error in validation['errors']:
+                    if "errors" in validation and validation["errors"]:
+                        prompt += "\n\nIMPORTANT: Previous attempt had these issues - avoid them:\n"
+                        for error in validation["errors"]:
                             prompt += f"- {error}\n"
                     continue  # Try again
                 else:
@@ -196,10 +200,7 @@ The cover should immediately communicate the book's era, themes, and atmosphere 
     raise RuntimeError("Ideogram cover generation failed after maximum retries")
 
 
-def generate_cover(
-    metadata: PublishingMetadata,
-    slug: str
-) -> CoverDesign:
+def generate_cover(metadata: PublishingMetadata, slug: str) -> CoverDesign:
     """Generate book cover using Ideogram AI."""
     cover_path = generate_cover_with_ideogram(metadata, slug)
 
@@ -208,5 +209,5 @@ def generate_cover(
         title=metadata.title,
         subtitle=metadata.subtitle,
         author=metadata.author,
-        publisher=metadata.publisher
+        publisher=metadata.publisher,
     )

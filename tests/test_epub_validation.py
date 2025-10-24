@@ -1,29 +1,33 @@
 #!/usr/bin/env python3
 """Test EPUB validation in the pipeline."""
 
-import time
-from pathlib import Path
-from unittest.mock import patch, MagicMock
-
 # Add the project root to the Python path
 import sys
+import time
+from pathlib import Path
+from unittest.mock import patch
+
 sys.path.append(str(Path(__file__).parent))
 
+from lily_books.config import ensure_directories, get_project_paths
+from lily_books.models import ChapterDoc, ChapterSplit, ParaPair, QAReport
 from lily_books.runner import run_pipeline
-from lily_books.models import ChapterDoc, ParaPair, QAReport, ChapterSplit, BookMetadata
-from lily_books.config import get_project_paths, ensure_directories
+
 
 # Mock rewrite_chapter and qa_chapter for a minimal test
 def mock_rewrite_chapter(ch: ChapterSplit) -> ChapterDoc:
     pairs = []
     for i, para in enumerate(ch.paragraphs):
-        pairs.append(ParaPair(
-            i=i,
-            para_id=f"ch{ch.chapter:02d}_para{i:03d}",
-            orig=para,
-            modern=f"Modernized: {para}"
-        ))
+        pairs.append(
+            ParaPair(
+                i=i,
+                para_id=f"ch{ch.chapter:02d}_para{i:03d}",
+                orig=para,
+                modern=f"Modernized: {para}",
+            )
+        )
     return ChapterDoc(chapter=ch.chapter, title=ch.title, pairs=pairs)
+
 
 def mock_qa_chapter(doc: ChapterDoc, fidelity_threshold: int = 92):
     for pair in doc.pairs:
@@ -35,31 +39,40 @@ def mock_qa_chapter(doc: ChapterDoc, fidelity_threshold: int = 92):
             formatting_preserved=True,
             tone_consistent=True,
             quote_count_match=True,
-            emphasis_preserved=True
+            emphasis_preserved=True,
         )
     return True, [], doc
+
 
 def test_epub_validation():
     """Test EPUB validation in the pipeline."""
     slug = "epub-test"
-    book_id = 1342 # Pride and Prejudice
-    
+    book_id = 1342  # Pride and Prejudice
+
     print("🚀 Starting EPUB validation test...")
     start_time = time.time()
-    
+
     # Clean up previous run
     paths = get_project_paths(slug)
     if paths["base"].exists():
         import shutil
+
         shutil.rmtree(paths["base"])
     ensure_directories(slug)
-    
-    with patch('src.lily_books.chains.writer.rewrite_chapter', side_effect=mock_rewrite_chapter), \
-         patch('src.lily_books.chains.checker.qa_chapter', side_effect=mock_qa_chapter), \
-         patch('src.lily_books.tools.tts.tts_fish_audio') as mock_tts, \
-         patch('src.lily_books.tools.audio.master_audio') as mock_master, \
-         patch('src.lily_books.tools.audio.get_audio_metrics') as mock_metrics, \
-         patch('src.lily_books.chains.ingest.load_gutendex', return_value="""
+
+    with patch(
+        "src.lily_books.chains.writer.rewrite_chapter", side_effect=mock_rewrite_chapter
+    ), patch(
+        "src.lily_books.chains.checker.qa_chapter", side_effect=mock_qa_chapter
+    ), patch(
+        "src.lily_books.tools.tts.tts_fish_audio"
+    ) as mock_tts, patch(
+        "src.lily_books.tools.audio.master_audio"
+    ) as mock_master, patch(
+        "src.lily_books.tools.audio.get_audio_metrics"
+    ) as mock_metrics, patch(
+        "src.lily_books.chains.ingest.load_gutendex",
+        return_value="""
 CHAPTER I
 
 It is a truth universally acknowledged, that a single man in possession of a good fortune, must be in want of a wife.
@@ -185,43 +198,56 @@ The astonishment of the ladies was just what he wished--that of Mrs. Bennet perh
 "Oh," said Lydia, stoutly, "I am not afraid; for though I am the youngest, I'm the tallest."
 
 The rest of the evening was spent in conjecturing how soon he would return Mr. Bennet's visit, and determining when they should ask him to dinner.
-"""):
-        
+""",
+    ):
         # Configure mocks
-        mock_tts.return_value = {"wav": "mock.wav", "duration_sec": 1.0, "chunks_processed": 1}
-        mock_master.return_value = {"mp3": "mock.mp3", "duration_sec": 1.0, "target_rms_db": -20}
+        mock_tts.return_value = {
+            "wav": "mock.wav",
+            "duration_sec": 1.0,
+            "chunks_processed": 1,
+        }
+        mock_master.return_value = {
+            "mp3": "mock.mp3",
+            "duration_sec": 1.0,
+            "target_rms_db": -20,
+        }
         mock_metrics.return_value = {"rms_db": -20, "peak_db": -5, "duration_sec": 1.0}
-        
+
         # Run pipeline for first 2 chapters
         result = run_pipeline(slug, book_id, chapters=[0, 1])
-        
+
         runtime = time.time() - start_time
         print(f"🎉 Pipeline completed successfully in {runtime:.1f} seconds!")
-        
+
         # Check EPUB validation results
         assert result["success"] is True
         assert "epub_quality_score" in result["deliverables"]
-        
+
         quality_score = result["deliverables"]["epub_quality_score"]
         print(f"✅ EPUB Quality Score: {quality_score}/100")
-        
-        assert quality_score >= 70, f"EPUB quality score {quality_score} is below threshold"
-        
+
+        assert (
+            quality_score >= 70
+        ), f"EPUB quality score {quality_score} is below threshold"
+
         # Verify EPUB file exists and has good size
         epub_path = Path(result["deliverables"]["epub_path"])
         assert epub_path.exists()
         epub_size = epub_path.stat().st_size
         print(f"✅ EPUB size: {epub_size} bytes")
         assert epub_size > 4000, f"EPUB too small: {epub_size} bytes"
-        
+
         print("\n📊 Summary:")
         print(f"   • Chapters processed: {len(result['rewritten'])}")
-        print(f"   • Total paragraphs: {sum(len(ch.pairs) for ch in result['rewritten'])}")
+        print(
+            f"   • Total paragraphs: {sum(len(ch.pairs) for ch in result['rewritten'])}"
+        )
         print(f"   • EPUB created: {epub_path}")
         print(f"   • EPUB Quality Score: {quality_score}/100")
         print(f"   • Audio chapters: {result['deliverables']['audio_chapters']}")
-        
+
         return True
+
 
 if __name__ == "__main__":
     test_epub_validation()

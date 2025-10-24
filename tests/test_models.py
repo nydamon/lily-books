@@ -1,20 +1,22 @@
 """Tests for Pydantic data models."""
 
-import pytest
 from lily_books.models import (
-    QAIssue, QAReport, ParaPair, ChapterDoc, ChapterSplit, BookMetadata,
-    ModernizedParagraph, WriterOutput, CheckerOutput
+    BookMetadata,
+    ChapterDoc,
+    ChapterSplit,
+    CheckerOutput,
+    ModernizedParagraph,
+    ParaPair,
+    QAIssue,
+    QAReport,
+    WriterOutput,
 )
 
 
 def test_qa_issue():
     """Test QAIssue model."""
-    issue = QAIssue(
-        type="formatting",
-        description="Missing quote",
-        severity="medium"
-    )
-    
+    issue = QAIssue(type="formatting", description="Missing quote", severity="medium")
+
     assert issue.type == "formatting"
     assert issue.description == "Missing quote"
     assert issue.severity == "medium"
@@ -33,9 +35,9 @@ def test_qa_report():
         tone_consistent=True,
         quote_count_match=True,
         emphasis_preserved=True,
-        retry_count=0
+        retry_count=0,
     )
-    
+
     assert report.fidelity_score == 95
     assert report.readability_grade == 8.5
     assert report.character_count_ratio == 1.2
@@ -49,9 +51,9 @@ def test_para_pair():
         i=0,
         para_id="ch01_para000",
         orig="It is a truth universally acknowledged.",
-        modern="It is a truth universally acknowledged."
+        modern="It is a truth universally acknowledged.",
     )
-    
+
     assert pair.i == 0
     assert pair.para_id == "ch01_para000"
     assert pair.orig == "It is a truth universally acknowledged."
@@ -67,10 +69,10 @@ def test_chapter_split():
         title="Chapter 1",
         paragraphs=[
             "It is a truth universally acknowledged.",
-            "That a single man in possession of a good fortune."
-        ]
+            "That a single man in possession of a good fortune.",
+        ],
     )
-    
+
     assert chapter.chapter == 1
     assert chapter.title == "Chapter 1"
     assert len(chapter.paragraphs) == 2
@@ -79,15 +81,15 @@ def test_chapter_split():
 
 def test_chapter_doc():
     """Test ChapterDoc model."""
-    pair1 = ParaPair(i=0, para_id="ch01_para000", orig="Original text", modern="Modern text")
-    pair2 = ParaPair(i=1, para_id="ch01_para001", orig="More text", modern="More modern text")
-    
-    doc = ChapterDoc(
-        chapter=1,
-        title="Chapter 1",
-        pairs=[pair1, pair2]
+    pair1 = ParaPair(
+        i=0, para_id="ch01_para000", orig="Original text", modern="Modern text"
     )
-    
+    pair2 = ParaPair(
+        i=1, para_id="ch01_para001", orig="More text", modern="More modern text"
+    )
+
+    doc = ChapterDoc(chapter=1, title="Chapter 1", pairs=[pair1, pair2])
+
     assert doc.chapter == 1
     assert doc.title == "Chapter 1"
     assert len(doc.pairs) == 2
@@ -99,9 +101,9 @@ def test_book_metadata():
     metadata = BookMetadata(
         title="Pride and Prejudice (Modernized)",
         author="Jane Austen",
-        public_domain_source="Project Gutenberg #1342"
+        public_domain_source="Project Gutenberg #1342",
     )
-    
+
     assert metadata.title == "Pride and Prejudice (Modernized)"
     assert metadata.author == "Jane Austen"
     assert metadata.public_domain_source == "Project Gutenberg #1342"
@@ -112,18 +114,14 @@ def test_book_metadata():
 
 def test_model_serialization():
     """Test model serialization and deserialization."""
-    issue = QAIssue(
-        type="test",
-        description="Test issue",
-        severity="low"
-    )
-    
+    issue = QAIssue(type="test", description="Test issue", severity="low")
+
     # Test serialization
     data = issue.model_dump()
     assert data["type"] == "test"
     assert data["description"] == "Test issue"
     assert data["severity"] == "low"
-    
+
     # Test deserialization
     restored = QAIssue(**data)
     assert restored.type == issue.type
@@ -134,7 +132,7 @@ def test_model_serialization():
 def test_modernized_paragraph():
     """Test ModernizedParagraph model."""
     para = ModernizedParagraph(modern="Modernized text content")
-    
+
     assert para.modern == "Modernized text content"
 
 
@@ -143,10 +141,10 @@ def test_writer_output():
     output = WriterOutput(
         paragraphs=[
             ModernizedParagraph(modern="First paragraph"),
-            ModernizedParagraph(modern="Second paragraph")
+            ModernizedParagraph(modern="Second paragraph"),
         ]
     )
-    
+
     assert len(output.paragraphs) == 2
     assert output.paragraphs[0].modern == "First paragraph"
     assert output.paragraphs[1].modern == "Second paragraph"
@@ -166,14 +164,10 @@ def test_checker_output():
         llm_reasoning="The modernization preserves the original meaning while improving readability.",
         metadata={"source": "claude-sonnet", "processing_time": 2.3},
         issues=[
-            QAIssue(
-                type="formatting",
-                description="Missing quote",
-                severity="medium"
-            )
-        ]
+            QAIssue(type="formatting", description="Missing quote", severity="medium")
+        ],
     )
-    
+
     assert output.fidelity_score == 95
     assert output.readability_grade == 8.5
     assert output.readability_appropriate is True
@@ -203,12 +197,10 @@ def test_checker_output_optional_fields():
     assert output.llm_reasoning is None
     assert output.metadata == {}
     assert output.issues == []
-    
+
     # Test with partial values
     output = CheckerOutput(
-        fidelity_score=85,
-        confidence=0.8,
-        llm_reasoning="Partial assessment"
+        fidelity_score=85, confidence=0.8, llm_reasoning="Partial assessment"
     )
     assert output.fidelity_score == 85
     assert output.confidence == 0.8
@@ -219,17 +211,13 @@ def test_checker_output_optional_fields():
 
 def test_writer_output_serialization():
     """Test WriterOutput serialization."""
-    output = WriterOutput(
-        paragraphs=[
-            ModernizedParagraph(modern="Test paragraph")
-        ]
-    )
-    
+    output = WriterOutput(paragraphs=[ModernizedParagraph(modern="Test paragraph")])
+
     data = output.model_dump()
     assert "paragraphs" in data
     assert len(data["paragraphs"]) == 1
     assert data["paragraphs"][0]["modern"] == "Test paragraph"
-    
+
     # Test deserialization
     restored = WriterOutput(**data)
     assert len(restored.paragraphs) == 1
@@ -249,9 +237,9 @@ def test_checker_output_serialization():
         confidence=0.88,
         llm_reasoning="Good modernization with minor formatting issues",
         metadata={"model": "claude-sonnet", "version": "4.5"},
-        issues=[]
+        issues=[],
     )
-    
+
     data = output.model_dump()
     assert data["fidelity_score"] == 85
     assert data["readability_grade"] == 7.5
@@ -264,7 +252,7 @@ def test_checker_output_serialization():
     assert "minor formatting issues" in data["llm_reasoning"]
     assert data["metadata"]["model"] == "claude-sonnet"
     assert data["issues"] == []
-    
+
     # Test deserialization
     restored = CheckerOutput(**data)
     assert restored.fidelity_score == 85
@@ -301,12 +289,11 @@ def test_qa_issue_optional_severity():
     # Test with default severity
     issue = QAIssue(type="test", description="Test issue")
     assert issue.severity == "medium"
-    
+
     # Test with explicit severity
     issue = QAIssue(type="test", description="Test issue", severity="high")
     assert issue.severity == "high"
-    
+
     # Test with None severity
     issue = QAIssue(type="test", description="Test issue", severity=None)
     assert issue.severity is None
-

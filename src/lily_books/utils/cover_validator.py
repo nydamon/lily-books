@@ -1,11 +1,11 @@
 """Cover image validation using Claude vision API via OpenRouter."""
 
-import logging
 import base64
-from pathlib import Path
-from typing import Dict, List
-import requests
 import json
+import logging
+from pathlib import Path
+
+import requests
 
 logger = logging.getLogger(__name__)
 
@@ -14,8 +14,8 @@ def validate_cover_image(
     cover_path: Path,
     expected_title: str,
     expected_author: str,
-    expected_edition: str = "Modernized Student Edition"
-) -> Dict[str, any]:
+    expected_edition: str = "Modernized Student Edition",
+) -> dict[str, any]:
     """Validate cover image using Claude vision API.
 
     Checks for:
@@ -39,7 +39,7 @@ def validate_cover_image(
     import os
 
     # Use OpenRouter for Claude API access (not direct Anthropic)
-    openrouter_api_key = os.getenv('OPENROUTER_API_KEY')
+    openrouter_api_key = os.getenv("OPENROUTER_API_KEY")
     if not openrouter_api_key:
         logger.warning("No OPENROUTER_API_KEY found - skipping cover validation")
         return {
@@ -47,7 +47,7 @@ def validate_cover_image(
             "errors": [],
             "warnings": ["Validation skipped - no OpenRouter API key configured"],
             "should_retry": False,
-            "reasoning": "Validation disabled"
+            "reasoning": "Validation disabled",
         }
 
     # Read image and encode as base64
@@ -102,34 +102,33 @@ Be strict - covers must be retail-quality with perfect text rendering."""
             "https://openrouter.ai/api/v1/chat/completions",
             headers={
                 "Authorization": f"Bearer {openrouter_api_key}",
-                "Content-Type": "application/json"
+                "Content-Type": "application/json",
             },
             json={
                 "model": "anthropic/claude-3.5-haiku",  # OpenRouter model name
-                "messages": [{
-                    "role": "user",
-                    "content": [
-                        {
-                            "type": "image_url",
-                            "image_url": {
-                                "url": f"data:image/png;base64,{image_data}"
-                            }
-                        },
-                        {
-                            "type": "text",
-                            "text": prompt
-                        }
-                    ]
-                }],
-                "max_tokens": 1000
+                "messages": [
+                    {
+                        "role": "user",
+                        "content": [
+                            {
+                                "type": "image_url",
+                                "image_url": {
+                                    "url": f"data:image/png;base64,{image_data}"
+                                },
+                            },
+                            {"type": "text", "text": prompt},
+                        ],
+                    }
+                ],
+                "max_tokens": 1000,
             },
-            timeout=30
+            timeout=30,
         )
 
         response.raise_for_status()
         result = response.json()
 
-        response_text = result['choices'][0]['message']['content']
+        response_text = result["choices"][0]["message"]["content"]
 
         # Extract JSON from response (may be wrapped in markdown or have extra content)
         # Strip markdown code blocks
@@ -141,7 +140,7 @@ Be strict - covers must be retail-quality with perfect text rendering."""
 
         # Find the JSON object - it starts with { and ends with }
         # This handles cases where LLM adds commentary before or after the JSON
-        start_idx = cleaned_text.find('{')
+        start_idx = cleaned_text.find("{")
         if start_idx == -1:
             raise ValueError("No JSON object found in response")
 
@@ -149,9 +148,9 @@ Be strict - covers must be retail-quality with perfect text rendering."""
         brace_count = 0
         end_idx = start_idx
         for i in range(start_idx, len(cleaned_text)):
-            if cleaned_text[i] == '{':
+            if cleaned_text[i] == "{":
                 brace_count += 1
-            elif cleaned_text[i] == '}':
+            elif cleaned_text[i] == "}":
                 brace_count -= 1
                 if brace_count == 0:
                     end_idx = i + 1
@@ -160,11 +159,13 @@ Be strict - covers must be retail-quality with perfect text rendering."""
         json_str = cleaned_text[start_idx:end_idx]
         validation_result = json.loads(json_str)
 
-        logger.info(f"Cover validation result: valid={validation_result.get('is_valid')}, "
-                   f"errors={len(validation_result.get('errors', []))}, "
-                   f"should_retry={validation_result.get('should_retry')}")
+        logger.info(
+            f"Cover validation result: valid={validation_result.get('is_valid')}, "
+            f"errors={len(validation_result.get('errors', []))}, "
+            f"should_retry={validation_result.get('should_retry')}"
+        )
 
-        if validation_result.get('errors'):
+        if validation_result.get("errors"):
             logger.warning(f"Cover validation errors: {validation_result['errors']}")
 
         return validation_result
@@ -177,5 +178,5 @@ Be strict - covers must be retail-quality with perfect text rendering."""
             "errors": [],
             "warnings": [f"Validation failed: {str(e)}"],
             "should_retry": False,
-            "reasoning": "Validation system error - proceeding with cover"
+            "reasoning": "Validation system error - proceeding with cover",
         }

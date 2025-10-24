@@ -1,25 +1,27 @@
 """Test publishing features."""
 
-import pytest
 from pathlib import Path
+
+import pytest
 from lily_books.chains.metadata_generator import generate_metadata
+from lily_books.models import CoverDesign, PublishingMetadata
 from lily_books.tools.cover_generator import generate_cover
-from lily_books.models import PublishingMetadata, CoverDesign
+
 from tests.fixtures.sample_chapter import get_sample_chapter_doc
 
 
 def test_metadata_generation():
     """Test LLM metadata generation."""
     chapters = [get_sample_chapter_doc()]
-    
+
     metadata = generate_metadata(
         original_title="Pride and Prejudice",
         original_author="Jane Austen",
         source="Project Gutenberg #1342",
         publisher="Test Publisher",
-        chapters=chapters
+        chapters=chapters,
     )
-    
+
     assert metadata.title
     assert metadata.short_description
     assert len(metadata.long_description) > 100
@@ -36,9 +38,9 @@ def test_cover_generation_uses_ideogram(monkeypatch, tmp_path):
         short_description="A test book",
         long_description="A longer test description.",
         keywords=["test"],
-        categories=["Fiction"]
+        categories=["Fiction"],
     )
-    
+
     slug = "test-cover"
 
     from lily_books.tools import cover_generator
@@ -51,7 +53,7 @@ def test_cover_generation_uses_ideogram(monkeypatch, tmp_path):
     monkeypatch.setattr(
         cover_generator,
         "generate_cover_with_ideogram",
-        fake_generate_cover_with_ideogram
+        fake_generate_cover_with_ideogram,
     )
 
     cover_design = generate_cover(metadata=metadata, slug=slug)
@@ -69,7 +71,7 @@ def test_cover_generation_requires_api_key(monkeypatch):
         short_description="A test book",
         long_description="A longer test description.",
         keywords=["test"],
-        categories=["Fiction"]
+        categories=["Fiction"],
     )
 
     from lily_books.tools import cover_generator
@@ -92,9 +94,9 @@ def test_publishing_metadata_model():
         short_description="A test book",
         long_description="A longer test description.",
         keywords=["test", "book"],
-        categories=["Fiction", "Classics"]
+        categories=["Fiction", "Classics"],
     )
-    
+
     assert metadata.title == "Test Book"
     assert metadata.author == "Test Author"
     assert metadata.publisher == "Modernized Classics Press"  # Default
@@ -106,11 +108,9 @@ def test_publishing_metadata_model():
 def test_cover_design_model():
     """Test CoverDesign model validation."""
     cover = CoverDesign(
-        title="Test Book",
-        author="Test Author",
-        image_path="/path/to/cover.png"
+        title="Test Book", author="Test Author", image_path="/path/to/cover.png"
     )
-    
+
     assert cover.title == "Test Book"
     assert cover.author == "Test Author"
     assert cover.publisher == "Modernized Classics Press"  # Default
@@ -123,7 +123,7 @@ def test_cover_design_model():
 def test_cover_prompt_generation():
     """Test cover prompt generation."""
     from lily_books.tools.cover_generator import generate_cover_prompt
-    
+
     metadata = PublishingMetadata(
         title="Alice's Adventures in Wonderland",
         author="Lewis Carroll",
@@ -131,11 +131,11 @@ def test_cover_prompt_generation():
         short_description="A classic children's tale",
         long_description="Alice falls down a rabbit hole into a fantasy world.",
         keywords=["fantasy", "children", "adventure"],
-        categories=["Children's Fiction", "Fantasy"]
+        categories=["Children's Fiction", "Fantasy"],
     )
-    
+
     prompt = generate_cover_prompt(metadata)
-    
+
     assert "Alice's Adventures in Wonderland" in prompt
     assert "Lewis Carroll" in prompt
     assert "Modernized Student Edition" in prompt
@@ -153,9 +153,9 @@ def test_metadata_fallback():
         original_author="Test Author",
         source="Test Source",
         publisher="Test Publisher",
-        chapters=[]  # Empty chapters
+        chapters=[],  # Empty chapters
     )
-    
+
     # Should return fallback metadata
     assert metadata.title
     assert metadata.short_description

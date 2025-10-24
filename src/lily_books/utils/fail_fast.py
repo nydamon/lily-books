@@ -1,8 +1,9 @@
 """Fail-fast validation utilities."""
 
-import logging
 import functools
-from typing import Any, Callable, Optional, Union
+import logging
+from collections.abc import Callable
+from typing import Any
 
 logger = logging.getLogger(__name__)
 
@@ -32,7 +33,7 @@ def _maybe_raise(message: str, exc: Exception | None = None) -> None:
     logger.warning(message)
 
 
-def check_gpt5_mini_response(response: Any, context: Optional[str] = None) -> None:
+def check_gpt5_mini_response(response: Any, context: str | None = None) -> None:
     """Check GPT-5 mini response for quality issues.
 
     Args:
@@ -51,7 +52,7 @@ def check_gpt5_mini_response(response: Any, context: Optional[str] = None) -> No
     _maybe_raise(message, ValueError("Empty response from LLM"))
 
 
-def check_llm_response(response: Any, context: Optional[str] = None) -> None:
+def check_llm_response(response: Any, context: str | None = None) -> None:
     """Check LLM response for quality issues.
 
     Args:
@@ -85,9 +86,8 @@ def _decorator(func: Callable) -> Callable:
 
 
 def fail_fast_on_exception(
-    exc_or_func: Union[Exception, Callable, None],
-    context: Optional[str] = None
-) -> Optional[Callable]:
+    exc_or_func: Exception | Callable | None, context: str | None = None
+) -> Callable | None:
     """Fail fast helper that works as decorator or direct exception handler.
 
     Args:

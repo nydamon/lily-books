@@ -1,18 +1,19 @@
 """Storage and persistence utilities for project data."""
 
 import json
+from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
-from typing import Dict, List, Optional, Any
-from dataclasses import dataclass
+from typing import Any
 
-from .models import ChapterDoc, FlowState, BookMetadata, PublishingMetadata, CoverDesign
-from .config import get_project_paths, ensure_directories
+from .config import ensure_directories, get_project_paths
+from .models import BookMetadata, ChapterDoc, CoverDesign, FlowState, PublishingMetadata
 
 
 @dataclass
 class ProjectPaths:
     """Standardized paths for a project."""
+
     base: Path
     source: Path
     work: Path
@@ -37,24 +38,24 @@ def save_chapter_doc(slug: str, chapter_num: int, doc: ChapterDoc) -> Path:
     """Save ChapterDoc to JSON file."""
     paths = get_project_paths(slug)
     ensure_directories(slug)
-    
+
     output_file = paths["rewrite"] / f"ch{chapter_num:02d}.json"
-    with open(output_file, 'w', encoding='utf-8') as f:
+    with open(output_file, "w", encoding="utf-8") as f:
         json.dump(doc.model_dump(), f, indent=2, ensure_ascii=False)
-    
+
     return output_file
 
 
-def load_chapter_doc(slug: str, chapter_num: int) -> Optional[ChapterDoc]:
+def load_chapter_doc(slug: str, chapter_num: int) -> ChapterDoc | None:
     """Load ChapterDoc from JSON file."""
     paths = get_project_paths(slug)
     input_file = paths["rewrite"] / f"ch{chapter_num:02d}.json"
-    
+
     if not input_file.exists():
         return None
-    
+
     try:
-        with open(input_file, 'r', encoding='utf-8') as f:
+        with open(input_file, encoding="utf-8") as f:
             data = json.load(f)
         return ChapterDoc(**data)
     except (json.JSONDecodeError, ValueError) as e:
@@ -66,101 +67,101 @@ def save_state(slug: str, state: FlowState) -> Path:
     """Save FlowState to JSON file."""
     paths = get_project_paths(slug)
     ensure_directories(slug)
-    
+
     output_file = paths["meta"] / "ingestion_state.json"
-    with open(output_file, 'w', encoding='utf-8') as f:
+    with open(output_file, "w", encoding="utf-8") as f:
         json.dump(state, f, indent=2, ensure_ascii=False)
-    
+
     return output_file
 
 
-def load_state(slug: str) -> Optional[FlowState]:
+def load_state(slug: str) -> FlowState | None:
     """Load FlowState from JSON file."""
     paths = get_project_paths(slug)
     input_file = paths["meta"] / "ingestion_state.json"
-    
+
     if not input_file.exists():
         return None
-    
+
     try:
-        with open(input_file, 'r', encoding='utf-8') as f:
+        with open(input_file, encoding="utf-8") as f:
             return json.load(f)
     except (json.JSONDecodeError, ValueError) as e:
         print(f"Error loading state: {e}")
         return None
 
 
-def append_log_entry(slug: str, entry: Dict[str, Any]) -> Path:
+def append_log_entry(slug: str, entry: dict[str, Any]) -> Path:
     """Append log entry to ingestion_log.jsonl."""
     paths = get_project_paths(slug)
     ensure_directories(slug)
-    
+
     log_file = paths["meta"] / "ingestion_log.jsonl"
-    
+
     # Add timestamp
     entry["timestamp"] = datetime.utcnow().isoformat()
-    
-    with open(log_file, 'a', encoding='utf-8') as f:
-        f.write(json.dumps(entry, ensure_ascii=False) + '\n')
-    
+
+    with open(log_file, "a", encoding="utf-8") as f:
+        f.write(json.dumps(entry, ensure_ascii=False) + "\n")
+
     return log_file
 
 
-def save_chapters_jsonl(slug: str, chapters: List[Dict]) -> Path:
+def save_chapters_jsonl(slug: str, chapters: list[dict]) -> Path:
     """Save chapters list to JSONL file."""
     paths = get_project_paths(slug)
     ensure_directories(slug)
-    
+
     output_file = paths["work"] / "chapters.jsonl"
-    with open(output_file, 'w', encoding='utf-8') as f:
+    with open(output_file, "w", encoding="utf-8") as f:
         for chapter in chapters:
-            f.write(json.dumps(chapter, ensure_ascii=False) + '\n')
-    
+            f.write(json.dumps(chapter, ensure_ascii=False) + "\n")
+
     return output_file
 
 
-def load_chapters_jsonl(slug: str) -> List[Dict]:
+def load_chapters_jsonl(slug: str) -> list[dict]:
     """Load chapters list from JSONL file."""
     paths = get_project_paths(slug)
     input_file = paths["work"] / "chapters.jsonl"
-    
+
     if not input_file.exists():
         return []
-    
+
     chapters = []
     try:
-        with open(input_file, 'r', encoding='utf-8') as f:
+        with open(input_file, encoding="utf-8") as f:
             for line in f:
                 if line.strip():
                     chapters.append(json.loads(line))
     except (json.JSONDecodeError, ValueError) as e:
         print(f"Error loading chapters: {e}")
-    
+
     return chapters
 
 
-def save_qa_issues(slug: str, chapter_num: int, issues: List[Dict]) -> Path:
+def save_qa_issues(slug: str, chapter_num: int, issues: list[dict]) -> Path:
     """Save QA issues to JSON file."""
     paths = get_project_paths(slug)
     ensure_directories(slug)
-    
+
     output_file = paths["qa_text"] / f"ch{chapter_num:02d}-issues.json"
-    with open(output_file, 'w', encoding='utf-8') as f:
+    with open(output_file, "w", encoding="utf-8") as f:
         json.dump(issues, f, indent=2, ensure_ascii=False)
-    
+
     return output_file
 
 
-def load_qa_issues(slug: str, chapter_num: int) -> List[Dict]:
+def load_qa_issues(slug: str, chapter_num: int) -> list[dict]:
     """Load QA issues from JSON file."""
     paths = get_project_paths(slug)
     input_file = paths["qa_text"] / f"ch{chapter_num:02d}-issues.json"
-    
+
     if not input_file.exists():
         return []
-    
+
     try:
-        with open(input_file, 'r', encoding='utf-8') as f:
+        with open(input_file, encoding="utf-8") as f:
             return json.load(f)
     except (json.JSONDecodeError, ValueError) as e:
         print(f"Error loading QA issues for chapter {chapter_num}: {e}")
@@ -170,29 +171,31 @@ def load_qa_issues(slug: str, chapter_num: int) -> List[Dict]:
 def save_book_metadata(slug: str, metadata: BookMetadata) -> Path:
     """Save book metadata to YAML file."""
     import yaml
-    
+
     paths = get_project_paths(slug)
     ensure_directories(slug)
-    
+
     output_file = paths["meta"] / "book.yaml"
-    with open(output_file, 'w', encoding='utf-8') as f:
-        yaml.dump(metadata.model_dump(), f, default_flow_style=False, allow_unicode=True)
-    
+    with open(output_file, "w", encoding="utf-8") as f:
+        yaml.dump(
+            metadata.model_dump(), f, default_flow_style=False, allow_unicode=True
+        )
+
     return output_file
 
 
-def load_book_metadata(slug: str) -> Optional[BookMetadata]:
+def load_book_metadata(slug: str) -> BookMetadata | None:
     """Load book metadata from YAML file."""
     import yaml
-    
+
     paths = get_project_paths(slug)
     input_file = paths["meta"] / "book.yaml"
-    
+
     if not input_file.exists():
         return None
-    
+
     try:
-        with open(input_file, 'r', encoding='utf-8') as f:
+        with open(input_file, encoding="utf-8") as f:
             data = yaml.safe_load(f)
         return BookMetadata(**data)
     except (yaml.YAMLError, ValueError) as e:
@@ -204,24 +207,24 @@ def save_raw_text(slug: str, text: str) -> Path:
     """Save raw text to file."""
     paths = get_project_paths(slug)
     ensure_directories(slug)
-    
+
     output_file = paths["source"] / "original.txt"
-    with open(output_file, 'w', encoding='utf-8') as f:
+    with open(output_file, "w", encoding="utf-8") as f:
         f.write(text)
-    
+
     return output_file
 
 
-def load_raw_text(slug: str) -> Optional[str]:
+def load_raw_text(slug: str) -> str | None:
     """Load raw text from file."""
     paths = get_project_paths(slug)
     input_file = paths["source"] / "original.txt"
-    
+
     if not input_file.exists():
         return None
-    
+
     try:
-        with open(input_file, 'r', encoding='utf-8') as f:
+        with open(input_file, encoding="utf-8") as f:
             return f.read()
     except Exception as e:
         print(f"Error loading raw text: {e}")
@@ -232,38 +235,38 @@ def save_chapter_failure(slug: str, chapter_num: int, stage: str, error: str) ->
     """Save chapter failure to manifest."""
     paths = get_project_paths(slug)
     ensure_directories(slug)
-    
+
     failure_entry = {
         "timestamp": datetime.utcnow().isoformat(),
         "chapter": chapter_num,
         "stage": stage,
-        "error": error
+        "error": error,
     }
-    
+
     failure_file = paths["meta"] / "chapter_failures.jsonl"
-    with open(failure_file, 'a', encoding='utf-8') as f:
-        f.write(json.dumps(failure_entry, ensure_ascii=False) + '\n')
-    
+    with open(failure_file, "a", encoding="utf-8") as f:
+        f.write(json.dumps(failure_entry, ensure_ascii=False) + "\n")
+
     return failure_file
 
 
-def load_chapter_failures(slug: str) -> List[Dict]:
+def load_chapter_failures(slug: str) -> list[dict]:
     """Load chapter failures from manifest."""
     paths = get_project_paths(slug)
     failure_file = paths["meta"] / "chapter_failures.jsonl"
-    
+
     if not failure_file.exists():
         return []
-    
+
     failures = []
     try:
-        with open(failure_file, 'r', encoding='utf-8') as f:
+        with open(failure_file, encoding="utf-8") as f:
             for line in f:
                 if line.strip():
                     failures.append(json.loads(line))
     except Exception as e:
         print(f"Error loading chapter failures: {e}")
-    
+
     return failures
 
 
@@ -271,24 +274,24 @@ def clear_chapter_failure(slug: str, chapter_num: int) -> None:
     """Remove chapter from failures manifest."""
     paths = get_project_paths(slug)
     failure_file = paths["meta"] / "chapter_failures.jsonl"
-    
+
     if not failure_file.exists():
         return
-    
+
     # Load all failures, filter out the specified chapter
     failures = []
     try:
-        with open(failure_file, 'r', encoding='utf-8') as f:
+        with open(failure_file, encoding="utf-8") as f:
             for line in f:
                 if line.strip():
                     failure = json.loads(line)
                     if failure["chapter"] != chapter_num:
                         failures.append(failure)
-        
+
         # Write back filtered failures
-        with open(failure_file, 'w', encoding='utf-8') as f:
+        with open(failure_file, "w", encoding="utf-8") as f:
             for failure in failures:
-                f.write(json.dumps(failure, ensure_ascii=False) + '\n')
+                f.write(json.dumps(failure, ensure_ascii=False) + "\n")
     except Exception as e:
         print(f"Error clearing chapter failure: {e}")
 
@@ -298,11 +301,14 @@ def save_publishing_metadata(slug: str, metadata: PublishingMetadata) -> Path:
     paths = get_project_paths(slug)
     ensure_directories(slug)
     file_path = paths["meta"] / "publishing.yaml"
-    
+
     import yaml
-    with open(file_path, 'w', encoding='utf-8') as f:
-        yaml.dump(metadata.model_dump(), f, default_flow_style=False, allow_unicode=True)
-    
+
+    with open(file_path, "w", encoding="utf-8") as f:
+        yaml.dump(
+            metadata.model_dump(), f, default_flow_style=False, allow_unicode=True
+        )
+
     return file_path
 
 
@@ -311,9 +317,8 @@ def save_cover_design(slug: str, cover: CoverDesign) -> Path:
     paths = get_project_paths(slug)
     ensure_directories(slug)
     file_path = paths["meta"] / "cover.json"
-    
-    with open(file_path, 'w', encoding='utf-8') as f:
-        json.dump(cover.model_dump(), f, indent=2, ensure_ascii=False)
-    
-    return file_path
 
+    with open(file_path, "w", encoding="utf-8") as f:
+        json.dump(cover.model_dump(), f, indent=2, ensure_ascii=False)
+
+    return file_path

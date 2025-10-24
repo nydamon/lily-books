@@ -1,9 +1,9 @@
 """Pytest configuration for Lily Books tests."""
 
+import builtins
 import sys
 import types
 from pathlib import Path
-import builtins
 
 from lily_books.models import CheckerOutput
 from lily_books.utils import validators as _validators

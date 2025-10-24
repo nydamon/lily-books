@@ -1,12 +1,12 @@
 """Text-to-Speech tool using Fish Audio API."""
 
 import json
-import subprocess
-import tempfile
 import logging
+import subprocess
 from pathlib import Path
-from typing import Dict, List
+
 from langchain_core.tools import tool
+
 try:
     from fish_audio_sdk import Session, TTSRequest
 except ImportError:  # pragma: no cover - optional dependency
@@ -18,22 +18,22 @@ from ..config import settings
 logger = logging.getLogger(__name__)
 
 
-def chunk_text(text: str, max_chars: int = 200000) -> List[str]:
+def chunk_text(text: str, max_chars: int = 200000) -> list[str]:
     """Split text into chunks suitable for TTS API."""
     if len(text) <= max_chars:
         return [text]
 
     chunks = []
-    sentences = text.split('. ')
+    sentences = text.split(". ")
     current_chunk = ""
 
     for sentence in sentences:
-        if len(current_chunk + sentence + '. ') <= max_chars:
-            current_chunk += sentence + '. '
+        if len(current_chunk + sentence + ". ") <= max_chars:
+            current_chunk += sentence + ". "
         else:
             if current_chunk:
                 chunks.append(current_chunk.strip())
-            current_chunk = sentence + '. '
+            current_chunk = sentence + ". "
 
     if current_chunk:
         chunks.append(current_chunk.strip())
@@ -41,7 +41,7 @@ def chunk_text(text: str, max_chars: int = 200000) -> List[str]:
     return chunks
 
 
-def tts_fish_audio(text: str, reference_id: str, out_wav: Path) -> Dict:
+def tts_fish_audio(text: str, reference_id: str, out_wav: Path) -> dict:
     """Synthesize text with Fish Audio and convert to 44.1k mono WAV.
 
     Args:
@@ -66,7 +66,9 @@ def tts_fish_audio(text: str, reference_id: str, out_wav: Path) -> Dict:
         raise ValueError(f"Text too short for TTS: {len(text)} chars (minimum 10)")
 
     if len(text) > 1_000_000:  # 1MB limit
-        raise ValueError(f"Text too long for TTS: {len(text)} chars (maximum 1,000,000)")
+        raise ValueError(
+            f"Text too long for TTS: {len(text)} chars (maximum 1,000,000)"
+        )
 
     # Check for problematic characters
     if not any(char.isalpha() for char in text[:100]):
@@ -92,8 +94,7 @@ def tts_fish_audio(text: str, reference_id: str, out_wav: Path) -> Dict:
 
             # Prepare TTS request
             tts_request = TTSRequest(
-                text=chunk,
-                reference_id=reference_id if reference_id else None
+                text=chunk, reference_id=reference_id if reference_id else None
             )
 
             # Call Fish Audio API and save MP3
@@ -106,10 +107,23 @@ def tts_fish_audio(text: str, reference_id: str, out_wav: Path) -> Dict:
         # Concatenate chunks if multiple
         if len(chunks) == 1:
             # Single chunk - convert directly
-            subprocess.check_call([
-                "ffmpeg", "-y", "-i", str(temp_files[0]),
-                "-ac", "1", "-ar", "44100", "-f", "wav", str(out_wav)
-            ], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+            subprocess.check_call(
+                [
+                    "ffmpeg",
+                    "-y",
+                    "-i",
+                    str(temp_files[0]),
+                    "-ac",
+                    "1",
+                    "-ar",
+                    "44100",
+                    "-f",
+                    "wav",
+                    str(out_wav),
+                ],
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+            )
         else:
             # Multiple chunks - concatenate first, then convert
             concat_file = out_wav.parent / f"{out_wav.stem}_concat.mp3"
@@ -117,39 +131,79 @@ def tts_fish_audio(text: str, reference_id: str, out_wav: Path) -> Dict:
 
             # Create concat list
             concat_list = out_wav.parent / "concat_list.txt"
-            with open(concat_list, 'w') as f:
+            with open(concat_list, "w") as f:
                 for temp_file in temp_files[:-1]:  # Exclude concat_file itself
                     f.write(f"file '{temp_file.absolute()}'\n")
 
             # Concatenate MP3s
-            subprocess.check_call([
-                "ffmpeg", "-y", "-f", "concat", "-safe", "0", "-i", str(concat_list),
-                "-c", "copy", str(concat_file)
-            ], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+            subprocess.check_call(
+                [
+                    "ffmpeg",
+                    "-y",
+                    "-f",
+                    "concat",
+                    "-safe",
+                    "0",
+                    "-i",
+                    str(concat_list),
+                    "-c",
+                    "copy",
+                    str(concat_file),
+                ],
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+            )
 
             # Convert to WAV
-            subprocess.check_call([
-                "ffmpeg", "-y", "-i", str(concat_file),
-                "-ac", "1", "-ar", "44100", "-f", "wav", str(out_wav)
-            ], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+            subprocess.check_call(
+                [
+                    "ffmpeg",
+                    "-y",
+                    "-i",
+                    str(concat_file),
+                    "-ac",
+                    "1",
+                    "-ar",
+                    "44100",
+                    "-f",
+                    "wav",
+                    str(out_wav),
+                ],
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+            )
 
             # Clean up concat list
             concat_list.unlink()
 
         # Get duration
-        duration_result = subprocess.run([
-            "ffprobe", "-v", "quiet", "-show_entries", "format=duration",
-            "-of", "csv=p=0", str(out_wav)
-        ], capture_output=True, text=True)
+        duration_result = subprocess.run(
+            [
+                "ffprobe",
+                "-v",
+                "quiet",
+                "-show_entries",
+                "format=duration",
+                "-of",
+                "csv=p=0",
+                str(out_wav),
+            ],
+            capture_output=True,
+            text=True,
+        )
 
-        duration_sec = float(duration_result.stdout.strip()) if duration_result.stdout.strip() else 0.0
+        duration_sec = (
+            float(duration_result.stdout.strip())
+            if duration_result.stdout.strip()
+            else 0.0
+        )
 
         logger.info(f"Generated audio: {out_wav} ({duration_sec:.2f}s)")
 
         return {
             "wav": str(out_wav),
             "duration_sec": duration_sec,
-            "chunks_processed": len(chunks)
+            "chunks_processed": len(chunks),
         }
 
     except Exception as e:

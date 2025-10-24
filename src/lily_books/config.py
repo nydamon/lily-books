@@ -1,6 +1,7 @@
 """Configuration management using Pydantic settings."""
 
 from pathlib import Path
+
 from pydantic_settings import BaseSettings
 
 
@@ -23,7 +24,7 @@ class Settings(BaseSettings):
     model_config = {
         "extra": "ignore",  # Ignore extra env vars (legacy keys like OPENAI_API_KEY)
         "env_file": ".env",
-        "env_file_encoding": "utf-8"
+        "env_file_encoding": "utf-8",
     }
 
     # API Keys
@@ -41,12 +42,12 @@ class Settings(BaseSettings):
     # Fish Audio TTS settings
     fish_reference_id: str = ""  # Optional: Custom voice model ID
     use_audio_transcription: bool = True
-    
+
     # Development settings
     debug: bool = False
     fail_fast_enabled: bool = False
     log_level: str = "INFO"
-    
+
     # Retry settings
     llm_max_retries: int = 3
     llm_retry_max_wait: int = 120  # Increased from 60 to 120 seconds
@@ -54,15 +55,17 @@ class Settings(BaseSettings):
     # Pipeline timeout settings (seconds)
     chapter_processing_timeout: int = 300  # 5 minutes per chapter
     qa_processing_timeout: int = 180  # 3 minutes per QA check
-    
+
     # LLM-driven validation settings
     llm_validation_mode: str = "trust"  # "strict", "hybrid", "trust"
     self_healing_enabled: bool = True
     max_retry_attempts: int = 3
-    retry_enhancement_strategy: str = "progressive"  # "progressive", "aggressive", "conservative"
+    retry_enhancement_strategy: str = (
+        "progressive"  # "progressive", "aggressive", "conservative"
+    )
     llm_quality_advisor_enabled: bool = True
     use_llm_for_structure: bool = True
-    
+
     # Quality control thresholds
     qa_min_fidelity: int = 85  # Strict threshold for sellable quality
     qa_target_fidelity: int = 92  # Target mean fidelity
@@ -73,19 +76,19 @@ class Settings(BaseSettings):
     qa_emphasis_severity: str = "high"  # critical/high/medium/low
     qa_quote_severity: str = "high"  # critical/high/medium/low
     qa_failure_mode: str = "continue_with_log"  # continue_with_log/fail_fast
-    
+
     # Caching settings
     cache_enabled: bool = True
     cache_ttl_seconds: int = 3600  # 1 hour
     cache_type: str = "memory"  # "memory" or "redis"
     redis_url: str = "redis://localhost:6379"
-    
+
     # Langfuse observability settings
     langfuse_enabled: bool = True
     langfuse_public_key: str | None = None
     langfuse_secret_key: str | None = None
     langfuse_host: str = "https://cloud.langfuse.com"
-    
+
     # Publishing options
     use_ai_covers: bool = True  # Ideogram AI cover generation (required)
     publisher_name: str = "Modernized Classics Press"
@@ -99,7 +102,7 @@ class Settings(BaseSettings):
 def get_project_paths(slug: str) -> dict[str, Path]:
     """Get standardized paths for a project slug."""
     base_dir = Path("books") / slug
-    
+
     return {
         "base": base_dir,
         "source": base_dir / "source",
@@ -144,6 +147,7 @@ def validate_audio_dependencies() -> None:
 
     try:
         from lily_books.tools.tts import Session, TTSRequest
+
         if Session is None or TTSRequest is None:
             raise ImportError()
     except ImportError:
@@ -162,20 +166,23 @@ def validate_audio_dependencies() -> None:
 def get_quality_settings(slug: str) -> dict:
     """Get quality settings with per-book overrides from book.yaml."""
     from .storage import load_book_metadata
-    
+
     # Start with global defaults
     quality_config = {
         "min_fidelity": settings.qa_min_fidelity,
         "target_fidelity": settings.qa_target_fidelity,
-        "readability_range": (settings.qa_min_readability_grade, settings.qa_max_readability_grade),
+        "readability_range": (
+            settings.qa_min_readability_grade,
+            settings.qa_max_readability_grade,
+        ),
         "emphasis_severity": settings.qa_emphasis_severity,
         "quote_severity": settings.qa_quote_severity,
-        "failure_mode": settings.qa_failure_mode
+        "failure_mode": settings.qa_failure_mode,
     }
-    
+
     # Check for book-specific overrides
     metadata = load_book_metadata(slug)
-    if metadata and hasattr(metadata, 'quality_control') and metadata.quality_control:
+    if metadata and hasattr(metadata, "quality_control") and metadata.quality_control:
         # Override with book-specific settings
         qc = metadata.quality_control
         if qc.min_fidelity is not None:
@@ -190,5 +197,5 @@ def get_quality_settings(slug: str) -> dict:
             quality_config["quote_severity"] = qc.quote_severity
         if qc.failure_mode is not None:
             quality_config["failure_mode"] = qc.failure_mode
-    
+
     return quality_config

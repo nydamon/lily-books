@@ -2,22 +2,26 @@
 """Full pipeline test with real LLM calls, QA, TTS, and audio mastering."""
 
 import time
-from lily_books.chains.ingest import load_gutendex, chapterize
-from lily_books.chains.writer import rewrite_chapter
-from lily_books.chains.checker import qa_chapter
-from lily_books.tools.tts import tts_fish_audio
-from lily_books.tools.audio import master_audio, get_audio_metrics
-from lily_books.tools.epub import build_epub
-from lily_books.tools.epub_validator import validate_epub_structure, get_epub_quality_report
-from lily_books.models import BookMetadata
 from pathlib import Path
-from unittest.mock import patch
+
+from lily_books.chains.checker import qa_chapter
+from lily_books.chains.ingest import chapterize, load_gutendex
+from lily_books.chains.writer import rewrite_chapter
+from lily_books.models import BookMetadata
+from lily_books.tools.audio import get_audio_metrics, master_audio
+from lily_books.tools.epub import build_epub
+from lily_books.tools.epub_validator import (
+    get_epub_quality_report,
+    validate_epub_structure,
+)
+from lily_books.tools.tts import tts_fish_audio
+
 
 def test_full_pipeline():
     """Test complete pipeline with real components."""
     print("🚀 Starting full pipeline test (first 2 chapters)...")
     start_time = time.time()
-    
+
     try:
         # Step 1: Ingest (with fallback for API issues)
         print("📥 Ingesting book...")
@@ -155,21 +159,23 @@ def test_full_pipeline():
             The rest of the evening was spent in conjecturing how soon he would return Mr. Bennet's visit, and determining when they should ask him to dinner.
             """
             print(f"✅ Using mock text with {len(raw_text)} characters")
-        
+
         # Step 2: Chapterize
         print("📚 Chapterizing...")
         chapters = chapterize(raw_text)
         print(f"✅ Found {len(chapters)} chapters")
-        
+
         # Step 3: Process only first 2 chapters (skip preamble)
         print("✏️ Processing first 2 chapters with real LLM...")
         rewritten_chapters = []
-        for i, chapter_split in enumerate(chapters[1:3]):  # Skip preamble, get chapters 1-2
+        for i, chapter_split in enumerate(
+            chapters[1:3]
+        ):  # Skip preamble, get chapters 1-2
             print(f"   Rewriting {chapter_split.title}...")
             chapter_doc = rewrite_chapter(chapter_split)
             rewritten_chapters.append(chapter_doc)
             print(f"   ✅ Rewrote {len(chapter_doc.pairs)} paragraphs")
-        
+
         # Step 4: QA validation
         print("🔍 Running QA validation...")
         all_passed = True
@@ -180,26 +186,26 @@ def test_full_pipeline():
                 all_passed = False
                 print(f"   ⚠️ QA issues found: {len(issues)}")
             else:
-                print(f"   ✅ QA passed")
-        
+                print("   ✅ QA passed")
+
         print(f"✅ QA complete - All passed: {all_passed}")
-        
+
         # Step 5: Build EPUB
         print("📖 Building EPUB...")
         metadata = BookMetadata(
             title="Pride and Prejudice (Modernized Student Edition)",
             author="Jane Austen",
-            public_domain_source="Project Gutenberg #1342"
+            public_domain_source="Project Gutenberg #1342",
         )
-        
+
         epub_path = build_epub("full-test", rewritten_chapters, metadata)
         print(f"✅ Created EPUB: {epub_path}")
-        
+
         # Step 5.5: EPUB Validation
         print("📋 Validating EPUB quality...")
         validation_result = validate_epub_structure(epub_path)
-        quality_report = get_epub_quality_report(epub_path)
-        
+        get_epub_quality_report(epub_path)
+
         print(f"✅ EPUB Quality Score: {validation_result.quality_score}/100")
         if validation_result.errors:
             print(f"❌ EPUB Errors: {len(validation_result.errors)}")
@@ -209,9 +215,9 @@ def test_full_pipeline():
             print(f"⚠️ EPUB Warnings: {len(validation_result.warnings)}")
             for warning in validation_result.warnings:
                 print(f"   • {warning}")
-        
+
         epub_quality_ok = validation_result.quality_score >= 70
-        
+
         # Step 6: TTS Generation
         print("🎤 Generating TTS audio...")
         audio_files = []
@@ -219,36 +225,44 @@ def test_full_pipeline():
             print(f"   Generating TTS for {chapter_doc.title}...")
             # Combine all paragraphs
             text = "\n\n".join(pair.modern for pair in chapter_doc.pairs)
-            
+
             # Generate TTS
-            wav_path = Path(f"books/full-test/work/audio/ch{chapter_doc.chapter:02d}.wav")
+            wav_path = Path(
+                f"books/full-test/work/audio/ch{chapter_doc.chapter:02d}.wav"
+            )
             wav_path.parent.mkdir(parents=True, exist_ok=True)
-            
+
             result = tts_fish_audio(text, "", wav_path)  # Use default Fish Audio voice
-            audio_files.append({
-                "chapter": chapter_doc.chapter,
-                "wav_path": str(wav_path),
-                "duration_sec": result["duration_sec"]
-            })
+            audio_files.append(
+                {
+                    "chapter": chapter_doc.chapter,
+                    "wav_path": str(wav_path),
+                    "duration_sec": result["duration_sec"],
+                }
+            )
             print(f"   ✅ Generated {result['duration_sec']:.1f}s audio")
-        
+
         # Step 7: Audio Mastering
         print("🎛️ Mastering audio...")
         mastered_files = []
         for audio_file in audio_files:
             print(f"   Mastering chapter {audio_file['chapter']}...")
             wav_path = Path(audio_file["wav_path"])
-            mp3_path = Path(f"books/full-test/work/audio_mastered/ch{audio_file['chapter']:02d}.mp3")
+            mp3_path = Path(
+                f"books/full-test/work/audio_mastered/ch{audio_file['chapter']:02d}.mp3"
+            )
             mp3_path.parent.mkdir(parents=True, exist_ok=True)
-            
+
             result = master_audio(wav_path, mp3_path)
-            mastered_files.append({
-                "chapter": audio_file["chapter"],
-                "mp3_path": str(mp3_path),
-                "duration_sec": result["duration_sec"]
-            })
+            mastered_files.append(
+                {
+                    "chapter": audio_file["chapter"],
+                    "mp3_path": str(mp3_path),
+                    "duration_sec": result["duration_sec"],
+                }
+            )
             print(f"   ✅ Mastered to {result['duration_sec']:.1f}s MP3")
-        
+
         # Step 8: Audio QA
         print("🔊 Running audio QA...")
         audio_ok = True
@@ -256,29 +270,35 @@ def test_full_pipeline():
             print(f"   QA checking chapter {mastered_file['chapter']}...")
             wav_path = Path(mastered_file["mp3_path"])
             metrics = get_audio_metrics(wav_path)
-            
+
             # Check ACX thresholds
             rms_ok = metrics["rms_db"] is None or metrics["rms_db"] >= -23
             peak_ok = metrics["peak_db"] is None or metrics["peak_db"] <= -3
-            
+
             if not (rms_ok and peak_ok):
                 audio_ok = False
-                print(f"   ⚠️ Audio QA failed: RMS={metrics['rms_db']}, Peak={metrics['peak_db']}")
+                print(
+                    f"   ⚠️ Audio QA failed: RMS={metrics['rms_db']}, Peak={metrics['peak_db']}"
+                )
             else:
-                print(f"   ✅ Audio QA passed: RMS={metrics['rms_db']}, Peak={metrics['peak_db']}")
-        
+                print(
+                    f"   ✅ Audio QA passed: RMS={metrics['rms_db']}, Peak={metrics['peak_db']}"
+                )
+
         print(f"✅ Audio QA complete - All passed: {audio_ok}")
-        
+
         # Step 9: Final verification
         print("🔍 Final verification...")
         epub_size = Path(epub_path).stat().st_size
         total_audio_duration = sum(f["duration_sec"] for f in mastered_files)
-        
+
         runtime = time.time() - start_time
         print(f"🎉 Full pipeline completed successfully in {runtime:.1f} seconds!")
-        print(f"📊 Final Summary:")
+        print("📊 Final Summary:")
         print(f"   • Chapters processed: {len(rewritten_chapters)}")
-        print(f"   • Total paragraphs: {sum(len(ch.pairs) for ch in rewritten_chapters)}")
+        print(
+            f"   • Total paragraphs: {sum(len(ch.pairs) for ch in rewritten_chapters)}"
+        )
         print(f"   • EPUB created: {epub_path} ({epub_size} bytes)")
         print(f"   • Audio chapters: {len(mastered_files)}")
         print(f"   • Total audio duration: {total_audio_duration:.1f} seconds")
@@ -286,15 +306,17 @@ def test_full_pipeline():
         print(f"   • Audio QA passed: {audio_ok}")
         print(f"   • EPUB Quality Score: {validation_result.quality_score}/100")
         print(f"   • EPUB Quality OK: {epub_quality_ok}")
-        
+
         return True
-        
+
     except Exception as e:
         runtime = time.time() - start_time
         print(f"❌ Pipeline failed after {runtime:.1f} seconds: {e}")
         import traceback
+
         traceback.print_exc()
         return False
+
 
 if __name__ == "__main__":
     success = test_full_pipeline()

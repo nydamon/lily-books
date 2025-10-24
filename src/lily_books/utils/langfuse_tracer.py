@@ -1,14 +1,15 @@
 """Langfuse tracing utilities."""
 
-from contextlib import contextmanager
 import logging
-from typing import Optional, List, Dict, Any, Iterator
-from langchain_core.callbacks import BaseCallbackHandler
+from collections.abc import Iterator
+from contextlib import contextmanager
+from typing import Any
 
 logger = logging.getLogger(__name__)
 
 try:
     from langfuse.callback import CallbackHandler as LangfuseCallbackHandler
+
     LANGFUSE_AVAILABLE = True
 except ImportError:
     LANGFUSE_AVAILABLE = False
@@ -18,6 +19,7 @@ except ImportError:
 def is_langfuse_enabled() -> bool:
     """Check if Langfuse is available and enabled."""
     from ..config import settings
+
     return (
         LANGFUSE_AVAILABLE
         and settings.langfuse_enabled
@@ -26,7 +28,7 @@ def is_langfuse_enabled() -> bool:
     )
 
 
-def get_langchain_callback_handler() -> Optional[LangfuseCallbackHandler]:
+def get_langchain_callback_handler() -> LangfuseCallbackHandler | None:
     """Get Langfuse callback handler if available and configured."""
     if not is_langfuse_enabled():
         return None
@@ -40,7 +42,7 @@ def get_langchain_callback_handler() -> Optional[LangfuseCallbackHandler]:
         callback = LangfuseCallbackHandler(
             public_key=settings.langfuse_public_key,
             secret_key=settings.langfuse_secret_key,
-            host=settings.langfuse_host
+            host=settings.langfuse_host,
         )
         return callback
     except Exception as e:
@@ -52,9 +54,9 @@ def get_langchain_callback_handler() -> Optional[LangfuseCallbackHandler]:
 def trace_pipeline(
     slug: str,
     book_id: int,
-    chapters: Optional[List[int]] = None,
-    metadata: Optional[Dict[str, Any]] = None
-) -> Iterator[Optional[Any]]:
+    chapters: list[int] | None = None,
+    metadata: dict[str, Any] | None = None,
+) -> Iterator[Any | None]:
     """Context manager placeholder for pipeline tracing."""
     if not is_langfuse_enabled():
         yield None
@@ -70,11 +72,8 @@ def trace_pipeline(
 
 @contextmanager
 def trace_node(
-    trace: Optional[Any],
-    node_name: str,
-    slug: str,
-    metadata: Optional[Dict[str, Any]] = None
-) -> Iterator[Optional[Any]]:
+    trace: Any | None, node_name: str, slug: str, metadata: dict[str, Any] | None = None
+) -> Iterator[Any | None]:
     """Context manager placeholder for node-level tracing."""
     if not trace:
         yield None
@@ -88,7 +87,9 @@ def trace_node(
     yield None
 
 
-def track_error(trace: Optional[Any], error: Exception, metadata: Optional[Dict[str, Any]] = None) -> None:
+def track_error(
+    trace: Any | None, error: Exception, metadata: dict[str, Any] | None = None
+) -> None:
     """Placeholder error tracking."""
     if not trace:
         return

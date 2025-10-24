@@ -1,6 +1,6 @@
 """Sample chapter data for testing."""
 
-from lily_books.models import ChapterSplit, ChapterDoc, ParaPair, QAReport
+from lily_books.models import ChapterDoc, ChapterSplit, ParaPair, QAReport
 
 
 def get_sample_chapter_split() -> ChapterSplit:
@@ -12,8 +12,8 @@ def get_sample_chapter_split() -> ChapterSplit:
             "It is a truth universally acknowledged, that a single man in possession of a good fortune, must be in want of a wife.",
             '"My dear Mr. Bennet," said his lady to him one day, "have you heard that Netherfield Park is let at last?"',
             "However little known the feelings or views of such a man may be on his first entering a neighbourhood, this truth is so well fixed in the minds of the surrounding families, that he is considered the rightful property of some one or other of their daughters.",
-            "_Pride and Prejudice_, by Jane Austen"
-        ]
+            "_Pride and Prejudice_, by Jane Austen",
+        ],
     )
 
 
@@ -33,8 +33,8 @@ def get_sample_chapter_doc() -> ChapterDoc:
                 formatting_preserved=True,
                 tone_consistent=True,
                 quote_count_match=True,
-                emphasis_preserved=True
-            )
+                emphasis_preserved=True,
+            ),
         ),
         ParaPair(
             i=1,
@@ -49,8 +49,8 @@ def get_sample_chapter_doc() -> ChapterDoc:
                 formatting_preserved=True,
                 tone_consistent=True,
                 quote_count_match=True,
-                emphasis_preserved=True
-            )
+                emphasis_preserved=True,
+            ),
         ),
         ParaPair(
             i=2,
@@ -65,8 +65,8 @@ def get_sample_chapter_doc() -> ChapterDoc:
                 formatting_preserved=True,
                 tone_consistent=True,
                 quote_count_match=True,
-                emphasis_preserved=True
-            )
+                emphasis_preserved=True,
+            ),
         ),
         ParaPair(
             i=3,
@@ -81,16 +81,12 @@ def get_sample_chapter_doc() -> ChapterDoc:
                 formatting_preserved=True,
                 tone_consistent=True,
                 quote_count_match=True,
-                emphasis_preserved=True
-            )
-        )
+                emphasis_preserved=True,
+            ),
+        ),
     ]
-    
-    return ChapterDoc(
-        chapter=1,
-        title="Chapter 1",
-        pairs=pairs
-    )
+
+    return ChapterDoc(chapter=1, title="Chapter 1", pairs=pairs)
 
 
 def get_sample_text() -> str:
@@ -110,4 +106,3 @@ Mr. Bennet was among the earliest of those who waited on Mr. Bingley.
 
 He had always intended to visit him, though to the last always assuring his wife that he should not go; and till the evening after the visit was paid she had no knowledge of it.
 """
-
