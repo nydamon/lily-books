@@ -18,6 +18,8 @@ This project includes a comprehensive subject-matter expert agent system for Cla
 - `/audio-production` - TTS and audio mastering expert
 - `/epub-covers` - EPUB and cover generation expert
 
+**Learn more**: See [claude.md](claude.md) for complete agent documentation.
+
 ## Features
 
 ### Core Pipeline

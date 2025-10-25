@@ -171,13 +171,14 @@ This file (`claude.md`) serves as the **master index** of all available agents.
 
 ---
 
-**Last Updated**: 2025-10-25
-**Version**: 1.1
-**Branch**: `claude/phase2-draft2digital-api-integration-011CUSa2nTthwZ3obprFEqcC`
-
----
-
 ## Recent Updates
+
+### 2025-10-25: Claude Code Agent System
+- **Added 7 subject-matter expert agents** for specialized codebase knowledge
+- Agents cover: LangGraph pipeline, LLM chains, publishing, QA, testing, audio, EPUB/covers
+- Comprehensive documentation with 60KB+ of detailed agent knowledge
+- Automatic agent invocation for proactive assistance
+- Development and testing guides included
 
 ### 2025-10-25: PublishDrive Integration
 - **Pivoted to PublishDrive** as primary distribution platform
@@ -202,3 +203,9 @@ TARGET_RETAILERS=publishdrive  # Recommended (PRIMARY)
 # or
 TARGET_RETAILERS=draft2digital,amazon,google  # Legacy (BACKUP)
 ```
+
+---
+
+**Last Updated**: 2025-10-25
+**Version**: 1.2
+**Branch**: `main`
