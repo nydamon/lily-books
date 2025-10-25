@@ -170,3 +170,7 @@ coverage.xml
 .hypothesis/
 
 .env.bak
+
+# Claude Code agent system (work in progress)
+.claude/
+tests/test_agents.py
