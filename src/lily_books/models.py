@@ -431,7 +431,7 @@ class FlowState(TypedDict):
     mastered_files: list[dict] | None  # Mastered audio files
 
     # Publishing metadata (basic)
-    publishing_metadata: PublishingMetadata | None
+    publishing_metadata: PublishingMetadata | dict[str, Any] | None
     cover_design: CoverDesign | None
     cover_path: str | None
 
@@ -441,7 +441,7 @@ class FlowState(TypedDict):
     requires_two_editions: bool | None  # Kindle + Universal editions
     edition_metadata: list[dict] | None  # Edition-specific metadata
     edition_files: list[dict] | None  # Edition-specific EPUB files
-    retail_metadata: RetailMetadata | dict[str, Any] | None  # SEO-optimized metadata
+    retail_metadata: RetailMetadata | dict[str, Any] | None  # SEO-optimized metadata (dict for LangGraph serialization)
     pricing: PricingInfo | None  # Pricing per retailer
     upload_status: dict | None  # {retailer: status}
     upload_results: dict | None  # {retailer: UploadResult}

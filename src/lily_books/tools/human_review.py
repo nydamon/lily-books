@@ -6,7 +6,7 @@ Shows cover, metadata, pricing, validation status, etc.
 
 from typing import Any
 
-from lily_books.models import EditionInfo, FlowState
+from lily_books.models import EditionInfo, FlowState, PublishingMetadata
 
 
 class HumanReviewGate:
@@ -30,10 +30,15 @@ class HumanReviewGate:
         print("=" * 70)
 
         # Basic info
-        pub_meta = state.get("publishing_metadata", {})
-        print(f"\nTitle: {pub_meta.get('title', 'N/A')}")
-        print(f"Author: {pub_meta.get('original_author', 'N/A')}")
-        print(f"Modernized by: {pub_meta.get('author', 'N/A')}")
+        pub_meta = state.get("publishing_metadata")
+        if isinstance(pub_meta, PublishingMetadata):
+            pub_meta_dict = pub_meta.model_dump()
+        else:
+            pub_meta_dict = pub_meta or {}
+
+        print(f"\nTitle: {pub_meta_dict.get('title', 'N/A')}")
+        print(f"Author: {pub_meta_dict.get('original_author', 'N/A')}")
+        print(f"Modernized by: {pub_meta_dict.get('author', 'N/A')}")
 
         # Pricing
         pricing = state.get("pricing", {})

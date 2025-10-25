@@ -25,6 +25,7 @@ from .models import (
     IngestError,
     MasterError,
     PackageError,
+    PublishingMetadata,
     QAError,
     RewriteError,
     TTSError,
@@ -60,9 +61,10 @@ from .tools.identifiers import assign_identifiers_node
 from .tools.pricing import calculate_pricing_node
 from .tools.publishing_dashboard import generate_publishing_report_node
 from .tools.uploaders import (
-    upload_to_d2d_node,
-    upload_to_google_node,
-    upload_to_kdp_node,
+    upload_to_publishdrive_node,  # PRIMARY
+    upload_to_d2d_node,  # LEGACY/BACKUP
+    upload_to_google_node,  # LEGACY/BACKUP
+    upload_to_kdp_node,  # LEGACY/BACKUP
 )
 from .tools.validators import validate_epub_node, validate_metadata_node
 
@@ -999,6 +1001,9 @@ def cover_node(state: FlowState) -> FlowState:
             logger.warning("No publishing metadata, skipping cover")
             return state
 
+        if isinstance(pub_metadata, dict):
+            pub_metadata = PublishingMetadata(**pub_metadata)
+
         # Generate cover (AI or template based on config)
         if not getattr(config, "use_ai_covers", True):
             raise CoverError(
@@ -1049,6 +1054,9 @@ def epub_node(state: FlowState) -> FlowState:
         # Get extended metadata and cover if available
         pub_metadata = state.get("publishing_metadata")
         cover_path = Path(state["cover_path"]) if state.get("cover_path") else None
+
+        if isinstance(pub_metadata, dict):
+            pub_metadata = PublishingMetadata(**pub_metadata)
 
         # Build EPUB with all enhancements
         epub_path = build_epub(
@@ -1388,9 +1396,15 @@ def build_graph() -> StateGraph:
         graph.add_node("validate_metadata", validate_metadata_node)
         graph.add_node("validate_epub", validate_epub_node)
         graph.add_node("human_review", human_review_node)
+
+        # PRIMARY: PublishDrive
+        graph.add_node("upload_publishdrive", upload_to_publishdrive_node)
+
+        # LEGACY/BACKUP: Individual retailers
         graph.add_node("upload_amazon", upload_to_kdp_node)
         graph.add_node("upload_google", upload_to_google_node)
         graph.add_node("upload_d2d", upload_to_d2d_node)
+
         graph.add_node("publishing_report", generate_publishing_report_node)
 
     # Set entry point
@@ -1462,39 +1476,47 @@ def build_graph() -> StateGraph:
         graph.add_edge("validate_metadata", "validate_epub")
         graph.add_edge("validate_epub", "human_review")
 
-        # Conditional: Human approval gate
+        # Conditional: Human approval gate and retailer routing
         def route_after_review(state: FlowState) -> str:
-            if state.get("human_approved", False):
-                return "upload_retailers"
-            else:
+            if not state.get("human_approved", False):
                 return "end_without_upload"
+
+            # PRIMARY: PublishDrive (if selected)
+            if "publishdrive" in config.target_retailers:
+                return "upload_publishdrive"
+
+            # LEGACY: Individual retailers
+            if "amazon" in config.target_retailers:
+                return "upload_amazon"
+            elif "google" in config.target_retailers:
+                return "upload_google"
+            elif "draft2digital" in config.target_retailers:
+                return "upload_d2d"
+
+            # No retailers selected - go to report
+            return "end_without_upload"
 
         graph.add_conditional_edges(
             "human_review",
             route_after_review,
             {
-                "upload_retailers": "upload_amazon",
+                "upload_publishdrive": "upload_publishdrive",  # PRIMARY
+                "upload_amazon": "upload_amazon",  # LEGACY
+                "upload_google": "upload_google",  # LEGACY
+                "upload_d2d": "upload_d2d",  # LEGACY
                 "end_without_upload": "publishing_report",
             },
         )
 
-        # Retailer uploads (sequential for simplicity, could be parallel)
-        # Check which retailers are configured
-        target_retailers = config.target_retailers
+        # PRIMARY: PublishDrive goes directly to report (single upload)
+        graph.add_edge("upload_publishdrive", "publishing_report")
 
-        if "amazon" in target_retailers:
-            graph.add_edge("upload_amazon", "upload_google")
-        else:
-            # Skip Amazon, go to Google
-            graph.add_edge("upload_amazon", "upload_google")
-
-        if "google" in target_retailers or "draft2digital" in target_retailers:
-            graph.add_edge("upload_google", "upload_d2d")
-        else:
-            graph.add_edge("upload_google", "publishing_report")
+        # LEGACY: Individual retailer uploads (sequential)
+        graph.add_edge("upload_amazon", "upload_google")
+        graph.add_edge("upload_google", "upload_d2d")
+        graph.add_edge("upload_d2d", "publishing_report")
 
         # Final report
-        graph.add_edge("upload_d2d", "publishing_report")
         graph.add_edge("publishing_report", END)
 
     return graph

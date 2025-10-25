@@ -11,9 +11,8 @@ from typing import Any
 from langchain_core.output_parsers import JsonOutputParser
 from langchain_core.prompts import ChatPromptTemplate
 
-from lily_books.models import FlowState, RetailMetadata
+from lily_books.models import FlowState, PublishingMetadata, RetailMetadata
 from lily_books.utils.llm_factory import create_llm_with_fallback
-
 
 # BISAC category reference
 BISAC_CATEGORIES = {
@@ -48,10 +47,15 @@ class RetailMetadataGenerator:
         """Generate SEO-optimized metadata for retail distribution."""
 
         # Extract existing metadata
-        pub_meta = state.get("publishing_metadata", {})
-        original_title = pub_meta.get("title", "Untitled")
-        author = pub_meta.get("original_author", "Unknown")
-        modernized_author = pub_meta.get("author", author)
+        pub_meta = state.get("publishing_metadata")
+        if isinstance(pub_meta, PublishingMetadata):
+            pub_meta_dict = pub_meta.model_dump()
+        else:
+            pub_meta_dict = pub_meta or {}
+
+        original_title = pub_meta_dict.get("title", "Untitled")
+        author = pub_meta_dict.get("original_author", "Unknown")
+        modernized_author = pub_meta_dict.get("author", author)
 
         # Get sample text for context
         sample_text = self._extract_sample_text(state)
@@ -140,14 +144,16 @@ Requirements:
                 }
             )
 
+            # Handle case where metadata might already be a RetailMetadata instance
             if isinstance(metadata_dict, RetailMetadata):
                 retail_metadata = metadata_dict
             else:
                 retail_metadata = RetailMetadata(**metadata_dict)
 
+            # Serialize to dict before storing in state (for LangGraph compatibility)
             state["retail_metadata"] = retail_metadata.model_dump()
 
-            print(f"\n✓ Generated SEO metadata:")
+            print("\n✓ Generated SEO metadata:")
             print(f"  - Title variations: {len(retail_metadata.title_variations)}")
             print(f"  - Keywords: {len(retail_metadata.keywords)}")
             print(f"  - Amazon keywords: {len(retail_metadata.amazon_keywords)}")
@@ -165,30 +171,41 @@ Requirements:
             return state
 
     def _extract_sample_text(self, state: FlowState) -> str:
-        """Extract sample text from first chapter."""
-        rewritten = state.get("rewritten") or []
-        if rewritten:
-            first_chapter = rewritten[0]
-            pairs = getattr(first_chapter, "pairs", None)
-            if pairs is None and isinstance(first_chapter, dict):
-                pairs = first_chapter.get("pairs")
+        """Extract sample text from first chapter.
 
-            if pairs:
-                first_pair = pairs[0]
-                modern_text = getattr(first_pair, "modern", None)
-                if modern_text is None and isinstance(first_pair, dict):
-                    modern_text = first_pair.get("modern")
+        Handles both Pydantic objects (attribute access) and dictionaries (key access).
+        """
+        if state.get("rewritten") and len(state["rewritten"]) > 0:
+            first_chapter = state["rewritten"][0]
 
-                if modern_text:
-                    return modern_text
+            # Try dictionary access first
+            if isinstance(first_chapter, dict):
+                pairs = first_chapter.get("pairs", [])
+                if pairs and len(pairs) > 0:
+                    first_pair = pairs[0]
+                    if isinstance(first_pair, dict):
+                        return first_pair.get("modern", "")
+                    else:
+                        # Pydantic object
+                        return getattr(first_pair, "modern", "")
+            else:
+                # Pydantic ChapterDoc object
+                pairs = getattr(first_chapter, "pairs", [])
+                if pairs and len(pairs) > 0:
+                    first_pair = pairs[0]
+                    return getattr(first_pair, "modern", "")
 
         return "A modernized edition of a classic work of literature."
 
     def _generate_fallback_metadata(self, state: FlowState) -> RetailMetadata:
         """Generate basic fallback metadata if AI generation fails."""
-        pub_meta = state.get("publishing_metadata", {})
-        title = pub_meta.get("title", "Untitled")
-        author = pub_meta.get("original_author", "Unknown")
+        pub_meta = state.get("publishing_metadata")
+        if isinstance(pub_meta, PublishingMetadata):
+            pub_meta_dict = pub_meta.model_dump()
+        else:
+            pub_meta_dict = pub_meta or {}
+        title = pub_meta_dict.get("title", "Untitled")
+        author = pub_meta_dict.get("original_author", "Unknown")
 
         return RetailMetadata(
             title_variations=[

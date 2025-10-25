@@ -8,7 +8,7 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any
 
-from lily_books.models import FlowState
+from lily_books.models import FlowState, PublishingMetadata
 
 
 class PublishingDashboard:
@@ -24,11 +24,17 @@ class PublishingDashboard:
     def log_book_status(self, state: FlowState) -> None:
         """Log book publishing status."""
 
+        pub_meta = state.get("publishing_metadata")
+        if isinstance(pub_meta, PublishingMetadata):
+            pub_meta_dict = pub_meta.model_dump()
+        else:
+            pub_meta_dict = pub_meta or {}
+
         entry = {
             "timestamp": datetime.now().isoformat(),
             "slug": state.get("slug", "unknown"),
-            "title": state.get("publishing_metadata", {}).get("title", "Unknown"),
-            "author": state.get("publishing_metadata", {}).get("original_author", "Unknown"),
+            "title": pub_meta_dict.get("title", "Unknown"),
+            "author": pub_meta_dict.get("original_author", "Unknown"),
             "identifiers": state.get("identifiers", {}),
             "upload_status": state.get("upload_status", {}),
             "upload_results": state.get("upload_results", {}),
