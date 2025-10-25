@@ -33,10 +33,15 @@ class Settings(BaseSettings):
     ideogram_api_key: str | None = None  # Required for Ideogram cover generation
 
     # Retailer API Keys for Publishing/Distribution
-    kdp_email: str | None = None  # Amazon KDP login email
-    kdp_password: str | None = None  # Amazon KDP password
-    google_play_credentials_path: str | None = None  # Path to Google service account JSON
-    draft2digital_api_key: str | None = None  # Draft2Digital API key
+    # PRIMARY: PublishDrive (for future Selenium automation)
+    publishdrive_email: str | None = None  # PublishDrive login email
+    publishdrive_password: str | None = None  # PublishDrive password
+
+    # LEGACY/BACKUP: Individual retailer credentials
+    draft2digital_api_key: str | None = None  # LEGACY/BACKUP: Draft2Digital API key
+    kdp_email: str | None = None  # LEGACY/BACKUP: Amazon KDP login email
+    kdp_password: str | None = None  # LEGACY/BACKUP: Amazon KDP password
+    google_play_credentials_path: str | None = None  # LEGACY/BACKUP: Google service account JSON
 
     # Model configurations - OpenRouter only
     # GPT-4o-mini and Claude 4.5 Haiku via OpenRouter: https://openrouter.ai/models

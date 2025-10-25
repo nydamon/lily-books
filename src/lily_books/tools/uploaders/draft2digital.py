@@ -1,4 +1,7 @@
-"""Draft2Digital upload integration - FULL IMPLEMENTATION.
+"""Draft2Digital upload integration - LEGACY/BACKUP IMPLEMENTATION.
+
+⚠️  DEPRECATED: PublishDrive is now the recommended distribution platform.
+    This integration is maintained as a backup option.
 
 Fully functional API integration for Draft2Digital distribution.
 
@@ -453,10 +456,13 @@ class Draft2DigitalUploader:
 
 
 def upload_to_d2d_node(state: FlowState) -> dict[str, Any]:
-    """LangGraph node for Draft2Digital upload - FULL IMPLEMENTATION."""
+    """LangGraph node for Draft2Digital upload - LEGACY/BACKUP IMPLEMENTATION."""
+
+    print("\n⚠️  WARNING: Draft2Digital is a LEGACY/BACKUP option.")
+    print("    Recommended: Use PublishDrive for wider distribution.\n")
 
     print("\n" + "=" * 70)
-    print("📤 Draft2Digital Upload (API)".center(70))
+    print("📤 Draft2Digital Upload (LEGACY/BACKUP)".center(70))
     print("=" * 70)
 
     uploader = Draft2DigitalUploader()

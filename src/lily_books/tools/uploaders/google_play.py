@@ -1,4 +1,7 @@
-"""Google Play Books upload integration.
+"""Google Play Books upload integration - LEGACY/BACKUP IMPLEMENTATION.
+
+⚠️  DEPRECATED: PublishDrive is now the recommended distribution platform.
+    This integration is maintained as a backup option for direct Google access.
 
 STUB IMPLEMENTATION: Documents the API structure for Google Play Books.
 
@@ -117,9 +120,12 @@ https://developers.google.com/books/docs/partner/getting_started
 
 
 def upload_to_google_node(state: FlowState) -> dict[str, Any]:
-    """LangGraph node for Google Play Books upload."""
+    """LangGraph node for Google Play Books upload - LEGACY/BACKUP IMPLEMENTATION."""
 
-    print("\n📤 Google Play Books Upload (API)")
+    print("\n⚠️  WARNING: Google Play direct upload is a LEGACY/BACKUP option.")
+    print("    Recommended: Use PublishDrive which includes Google distribution.\n")
+
+    print("\n📤 Google Play Books Upload (LEGACY/BACKUP - API)")
     print("=" * 70)
 
     uploader = GooglePlayBooksUploader()

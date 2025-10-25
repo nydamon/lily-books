@@ -1,4 +1,7 @@
-"""Amazon KDP upload integration.
+"""Amazon KDP upload integration - LEGACY/BACKUP IMPLEMENTATION.
+
+⚠️  DEPRECATED: PublishDrive is now the recommended distribution platform.
+    This integration is maintained as a backup option for direct Amazon access.
 
 STUB IMPLEMENTATION: Documents the upload process for Amazon KDP.
 
@@ -112,9 +115,12 @@ Amazon KDP Manual Upload Steps:
 
 
 def upload_to_kdp_node(state: FlowState) -> dict[str, Any]:
-    """LangGraph node for Amazon KDP upload."""
+    """LangGraph node for Amazon KDP upload - LEGACY/BACKUP IMPLEMENTATION."""
 
-    print("\n📤 Amazon KDP Upload (Manual)")
+    print("\n⚠️  WARNING: Amazon KDP direct upload is a LEGACY/BACKUP option.")
+    print("    Recommended: Use PublishDrive which includes Amazon distribution.\n")
+
+    print("\n📤 Amazon KDP Upload (LEGACY/BACKUP - Manual)")
     print("=" * 70)
 
     uploader = AmazonKDPUploader()
