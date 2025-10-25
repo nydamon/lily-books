@@ -24,11 +24,16 @@ Agent testing ensures:
 
 ### Running Tests
 
-Agent test suite to be added in future commit. Test infrastructure will validate:
-- Slash command file existence
-- Agent documentation completeness
-- File reference accuracy
-- Development guide availability
+```bash
+# All agent tests
+poetry run pytest tests/test_agents.py -v
+
+# Specific test class
+poetry run pytest tests/test_agents.py::TestAgentSlashCommands -v
+
+# Single test
+poetry run pytest tests/test_agents.py::test_slash_command_exists -v
+```
 
 ## Test Categories
 

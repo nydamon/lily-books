@@ -178,7 +178,7 @@ This file (`claude.md`) serves as the **master index** of all available agents.
 - Agents cover: LangGraph pipeline, LLM chains, publishing, QA, testing, audio, EPUB/covers
 - Comprehensive documentation with 60KB+ of detailed agent knowledge
 - Automatic agent invocation for proactive assistance
-- Development and testing guides included
+- Full test suite (31 tests passing)
 
 ### 2025-10-25: PublishDrive Integration
 - **Pivoted to PublishDrive** as primary distribution platform
