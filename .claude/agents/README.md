@@ -144,6 +144,16 @@ Each agent contains:
 
 ---
 
+## Development
+
+### Creating New Agents
+See [AGENT_DEVELOPMENT_GUIDE.md](../../docs/agents/AGENT_DEVELOPMENT_GUIDE.md)
+
+### Testing Agents
+See [AGENT_TESTING.md](../../docs/agents/AGENT_TESTING.md)
+
+---
+
 ## Maintenance
 
 Agents should be updated when:

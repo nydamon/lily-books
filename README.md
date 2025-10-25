@@ -6,6 +6,18 @@ A LangChain/LangGraph pipeline for modernizing public-domain books into student-
 
 Lily Books converts 19th-century public-domain texts into modern English suitable for students, while preserving the original meaning, dialogue structure, and literary elements. The pipeline produces both EPUB ebooks and ACX-compliant audiobooks.
 
+## Claude Code Agent System 🤖
+
+This project includes a comprehensive subject-matter expert agent system for Claude Code. Use slash commands to activate specialized agents:
+
+- `/langgraph-pipeline` - State machine architecture expert
+- `/llm-chains` - LLM optimization and cost management expert
+- `/publishing` - Publishing and distribution expert (PublishDrive-focused)
+- `/qa-validation` - Quality assurance and validation expert
+- `/testing` - Testing and reliability expert
+- `/audio-production` - TTS and audio mastering expert
+- `/epub-covers` - EPUB and cover generation expert
+
 ## Features
 
 ### Core Pipeline
