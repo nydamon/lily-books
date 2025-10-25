@@ -171,6 +171,6 @@ coverage.xml
 
 .env.bak
 
-# Claude Code agent system (work in progress)
-.claude/
-tests/test_agents.py
+# Claude Code local settings (user-specific, not for version control)
+.claude/settings.local.json
+.claude/*.local.*
